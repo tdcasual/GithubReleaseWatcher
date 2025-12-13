@@ -21,8 +21,10 @@ class GitHubConfig:
 @dataclass
 class RepoConfig:
     name: str
+    enabled: bool = True
     include_assets: list[str] = field(default_factory=list)
     exclude_assets: list[str] = field(default_factory=list)
+    asset_types: list[str] = field(default_factory=list)
     include_prereleases: bool = False
     include_drafts: bool = False
     keep_last: int | None = None
@@ -79,6 +81,17 @@ def _compile_regexes(patterns: list[str], field_name: str) -> None:
             raise ConfigError(f"Invalid regex in {field_name}: {pattern!r}: {exc}") from exc
 
 
+def _normalize_asset_type(raw: str) -> str:
+    value = raw.strip().lower()
+    if value.startswith("."):
+        value = value[1:]
+    if not value:
+        raise ConfigError("asset_types items must be non-empty strings")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,31}", value):
+        raise ConfigError(f"asset_types item contains invalid characters: {raw!r}")
+    return value
+
+
 def load_config(path: Path) -> AppConfig:
     if not path.exists():
         raise ConfigError(f"Config file not found: {path}")
@@ -130,21 +143,32 @@ def load_config(path: Path) -> AppConfig:
 
         include_assets = repo_data.get("include_assets", []) or []
         exclude_assets = repo_data.get("exclude_assets", []) or []
+        asset_types_raw = repo_data.get("asset_types", []) or []
         if not isinstance(include_assets, list) or not all(isinstance(x, str) for x in include_assets):
             raise ConfigError(f"repos[{idx}].include_assets must be a list of strings")
         if not isinstance(exclude_assets, list) or not all(isinstance(x, str) for x in exclude_assets):
             raise ConfigError(f"repos[{idx}].exclude_assets must be a list of strings")
+        if not isinstance(asset_types_raw, list) or not all(isinstance(x, str) for x in asset_types_raw):
+            raise ConfigError(f"repos[{idx}].asset_types must be a list of strings")
 
         _compile_regexes(include_assets, f"repos[{idx}].include_assets")
         _compile_regexes(exclude_assets, f"repos[{idx}].exclude_assets")
+
+        asset_types = []
+        for value in asset_types_raw:
+            norm = _normalize_asset_type(value)
+            if norm not in asset_types:
+                asset_types.append(norm)
 
         keep_last_raw = repo_data.get("keep_last", None)
         keep_last = int(keep_last_raw) if keep_last_raw is not None else None
 
         repo_cfg = RepoConfig(
             name=name.strip(),
+            enabled=bool(repo_data.get("enabled", True)),
             include_assets=include_assets,
             exclude_assets=exclude_assets,
+            asset_types=asset_types,
             include_prereleases=bool(repo_data.get("include_prereleases", False)),
             include_drafts=bool(repo_data.get("include_drafts", False)),
             keep_last=keep_last,
@@ -165,4 +189,3 @@ def load_config(path: Path) -> AppConfig:
             raise ConfigError(f"repos[{idx}].keep_last must be > 0 when set")
 
     return config
-

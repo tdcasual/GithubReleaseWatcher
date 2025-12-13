@@ -17,6 +17,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--once", action="store_true", help="Run a single check and exit.")
     parser.add_argument("--log-level", default="INFO", help="Logging level (e.g. DEBUG, INFO, WARNING).")
 
+    parser.add_argument("--web", action="store_true", help="Start built-in web API server (and optional UI).")
+    parser.add_argument("--web-host", default="127.0.0.1", help="Web server bind host (default: 127.0.0.1).")
+    parser.add_argument("--web-port", type=int, default=8000, help="Web server port (default: 8000).")
+    parser.add_argument("--no-ui", action="store_true", help="Disable the built-in web UI (API still available).")
+    parser.add_argument("--web-no-scheduler", action="store_true", help="Do not start the periodic scheduler at startup.")
+
     parser.add_argument("--interval-seconds", type=int, default=None, help="Override interval_seconds in config.")
     parser.add_argument("--download-dir", type=Path, default=None, help="Override download_dir in config.")
     parser.add_argument("--state-file", type=Path, default=None, help="Override state_file in config.")
@@ -33,6 +39,20 @@ def main(argv: list[str] | None = None) -> int:
         level=getattr(logging, str(args.log_level).upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(message)s",
     )
+
+    if args.web:
+        from .webapp import serve
+
+        scheduler_enabled = not args.web_no_scheduler
+        run_immediately = bool(args.once or scheduler_enabled)
+        return serve(
+            config_path=args.config,
+            host=str(args.web_host),
+            port=int(args.web_port),
+            ui=not args.no_ui,
+            scheduler_enabled=scheduler_enabled,
+            run_immediately=run_immediately,
+        )
 
     try:
         config = load_config(args.config)
@@ -54,4 +74,3 @@ def main(argv: list[str] | None = None) -> int:
     if args.once:
         return run_once(config)
     return watch_loop(config)
-

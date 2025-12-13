@@ -7,5 +7,12 @@ __pycache__/
 # Tool outputs
 downloads/
 state.json
+config.override.json
 .tools/
 
+# Example local config outputs
+real_downloads/
+real_state.json
+test_state.json
+
+test_downloads/

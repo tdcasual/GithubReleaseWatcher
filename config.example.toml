@@ -11,9 +11,13 @@ api_base = "https://api.github.com"
 
 [[repos]]
 name = "gruntwork-io/fetch"
+# 可选：禁用某个仓库（仍保留配置）
+enabled = true
 # include_assets/exclude_assets 均为正则表达式（Python re），为空则表示下载全部资产
-include_assets = ["^fetch_linux_amd64$"]
+include_assets = ["(?i)^fetch_windows_amd64\\.exe$"]
 exclude_assets = []
+# 可选：按资产后缀筛选（与 include/exclude 正则叠加生效）
+asset_types = ["exe"]
 include_prereleases = false
 include_drafts = false
 keep_last = 3

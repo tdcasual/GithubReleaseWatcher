@@ -44,6 +44,29 @@ python3 -m github_release_watcher --config config.toml --once
 python3 watcher.py --config config.toml
 ```
 
+## Web 模式（API + 可选前端）
+
+启动内置 Web 服务（默认带前端 UI）：
+
+```bash
+python3 watcher.py --config config.toml --web --web-host 127.0.0.1 --web-port 8000
+```
+
+打开：`http://127.0.0.1:8000/`
+
+仅启用 API（不提供前端）：
+
+```bash
+python3 watcher.py --config config.toml --web --no-ui
+```
+
+主要 API：
+
+- `GET /api/v1/status`：运行状态、最近一次执行结果、当前配置（脱敏）
+- `POST /api/v1/run`：触发一次检查/下载
+- `PUT /api/v1/settings`：更新运行配置（写入 `config.override.json`）
+- `PUT /api/v1/scheduler`：开启/关闭自动轮询
+
 ## 目录结构
 
 默认会下载到 `download_dir/<owner>/<repo>/<tag>/`，例如：
@@ -62,3 +85,5 @@ python3 watcher.py --config config.toml
 - `[github].token`：GitHub Token（可留空，工具也会读取环境变量 `GITHUB_TOKEN` / `GITHUB_OAUTH_TOKEN`）
 - `[[repos]].name`：`owner/repo` 或完整仓库 URL
 - `[[repos]].include_assets` / `exclude_assets`：资产名匹配规则（Python `re` 正则），`include_assets` 为空表示下载全部资产
+- `[[repos]].enabled`：是否启用该仓库（默认 `true`）
+- `[[repos]].asset_types`：按资产后缀筛选（如 `["exe","apk"]`，与 include/exclude 正则叠加生效）

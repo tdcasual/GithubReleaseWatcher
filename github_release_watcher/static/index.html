@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>GitHub Release Watcher</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script defer src="/app.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="logo" aria-hidden="true"></div>
+          <div class="brand-text">
+            <div class="title">Release Watcher</div>
+            <div class="subtitle">GitHub Release 监控与自动备份</div>
+          </div>
+        </div>
+        <div class="top-actions">
+          <div id="statusBadge" class="badge">加载中…</div>
+          <button id="runNowBtn" class="btn primary" type="button">立即检查</button>
+        </div>
+      </header>
+
+      <main class="grid">
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h2>运行状态</h2>
+              <p class="muted">稳定运行，不因偶发错误停止。可随时手动触发或开启自动轮询。</p>
+            </div>
+            <div class="card-actions">
+              <button id="reloadBtn" class="btn" type="button">重新加载配置</button>
+            </div>
+          </div>
+
+          <div class="kv">
+            <div class="kv-item">
+              <div class="kv-k">自动轮询</div>
+              <div class="kv-v">
+                <label class="switch">
+                  <input id="schedulerToggle" type="checkbox" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-k">间隔</div>
+              <div class="kv-v">
+                <div class="inline">
+                  <input id="intervalInput" class="input" type="number" min="1" max="1440" step="1" />
+                  <span class="muted">分钟</span>
+                </div>
+              </div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-k">下次运行</div>
+              <div id="nextRunAt" class="kv-v muted">-</div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-k">上次运行</div>
+              <div id="lastRunAt" class="kv-v muted">-</div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="row">
+            <div class="grow">
+              <label class="label" for="keepLastInput">保留最近 N 个 Release</label>
+              <div class="inline">
+                <input id="keepLastInput" class="input" type="number" min="1" max="1000" step="1" />
+                <span class="muted">（1 表示仅保留最新一次发布）</span>
+              </div>
+            </div>
+            <div class="right">
+              <button id="saveBtn" class="btn primary" type="button" disabled>保存更改</button>
+            </div>
+          </div>
+
+          <p id="configHint" class="hint"></p>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h2>仓库与资产规则</h2>
+              <p class="muted">选择需要保存的发布类型（如 exe、apk），以及每个仓库的保留数量。</p>
+            </div>
+            <div class="card-actions">
+              <button id="addRepoBtn" class="btn" type="button">添加仓库</button>
+            </div>
+          </div>
+          <div id="repos" class="repos"></div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h2>运行日志</h2>
+              <p class="muted">最近日志（自动刷新）。</p>
+            </div>
+            <div class="card-actions">
+              <button id="copyLogsBtn" class="btn" type="button">复制日志</button>
+            </div>
+          </div>
+          <pre id="logs" class="logs">加载中…</pre>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <span class="muted">API: <code>/api/v1</code></span>
+      </footer>
+    </div>
+
+    <dialog id="repoDialog" class="dialog">
+      <form method="dialog" class="dialog-form">
+        <div class="dialog-head">
+          <div>
+            <h3>添加仓库</h3>
+            <p class="muted">支持 <code>owner/repo</code> 或完整仓库 URL。</p>
+          </div>
+          <button class="icon-btn" value="cancel" aria-label="关闭">×</button>
+        </div>
+
+        <label class="label" for="newRepoName">仓库</label>
+        <input id="newRepoName" class="input" placeholder="mihomo-party-org/clash-party" />
+
+        <div class="divider"></div>
+
+        <div class="row">
+          <div class="grow">
+            <div class="label">保存哪些发布资产</div>
+            <div id="newRepoTypes" class="chips"></div>
+            <div class="inline">
+              <input id="newTypeInput" class="input" placeholder="自定义类型，如: msi" />
+              <button id="addTypeBtn" class="btn" type="button">添加</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <menu class="dialog-actions">
+          <button id="createRepoBtn" class="btn primary" value="confirm">添加</button>
+          <button class="btn" value="cancel">取消</button>
+        </menu>
+      </form>
+    </dialog>
+  </body>
+</html>
+

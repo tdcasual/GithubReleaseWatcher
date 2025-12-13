@@ -33,6 +33,9 @@ def run_once(config: AppConfig) -> int:
 
     had_errors = False
     for repo_cfg in config.repos:
+        if not getattr(repo_cfg, "enabled", True):
+            logging.info("Skipping disabled repo: %s", repo_cfg.name)
+            continue
         try:
             ok = _process_repo(config, repo_cfg, github, downloader, state)
             had_errors = had_errors or not ok
@@ -40,7 +43,11 @@ def run_once(config: AppConfig) -> int:
             logging.exception("Failed processing repo %s", repo_cfg.name)
             had_errors = True
 
-    save_state(config.state_file, state)
+    try:
+        save_state(config.state_file, state)
+    except Exception:
+        logging.exception("Failed saving state file: %s", config.state_file)
+        return 1
     return 1 if had_errors else 0
 
 
@@ -138,12 +145,18 @@ def _compile_patterns(patterns: Iterable[str]) -> list[re.Pattern[str]]:
 def _select_assets(release: Release, repo_cfg: RepoConfig) -> list[str]:
     include = _compile_patterns(repo_cfg.include_assets)
     exclude = _compile_patterns(repo_cfg.exclude_assets)
+    asset_types = [t.strip().lower().lstrip(".") for t in getattr(repo_cfg, "asset_types", []) if t and t.strip()]
 
     selected: list[str] = []
     for asset in release.assets:
         name = asset.name
         if not _is_safe_filename(name):
             continue
+
+        if asset_types:
+            lower_name = name.lower()
+            if not any(lower_name.endswith("." + t) for t in asset_types):
+                continue
 
         if include and not any(p.search(name) for p in include):
             continue
