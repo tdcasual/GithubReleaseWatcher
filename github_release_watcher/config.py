@@ -1,0 +1,168 @@
+from __future__ import annotations
+
+import os
+import re
+import tomllib
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+
+class ConfigError(ValueError):
+    pass
+
+
+@dataclass
+class GitHubConfig:
+    token: str | None = None
+    api_base: str = "https://api.github.com"
+
+
+@dataclass
+class RepoConfig:
+    name: str
+    include_assets: list[str] = field(default_factory=list)
+    exclude_assets: list[str] = field(default_factory=list)
+    include_prereleases: bool = False
+    include_drafts: bool = False
+    keep_last: int | None = None
+
+
+@dataclass
+class AppConfig:
+    interval_seconds: int = 600
+    download_dir: Path = Path("./downloads")
+    state_file: Path = Path("./state.json")
+    keep_last: int = 5
+    fetch_path: str = "fetch"
+    github: GitHubConfig = field(default_factory=GitHubConfig)
+    repos: list[RepoConfig] = field(default_factory=list)
+
+
+def _expand_env_vars(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _expand_env_vars(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_expand_env_vars(v) for v in value]
+    if isinstance(value, str):
+        return os.path.expandvars(value)
+    return value
+
+
+def _as_path(base_dir: Path, raw: Any, field_name: str) -> Path:
+    if not isinstance(raw, (str, os.PathLike)):
+        raise ConfigError(f"{field_name} must be a path string")
+    path = Path(raw)
+    if not path.is_absolute():
+        path = base_dir / path
+    return path
+
+
+def _normalize_token(raw: Any) -> str | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ConfigError("github.token must be a string")
+    token = raw.strip()
+    if not token:
+        return None
+    if "$" in token:
+        return None
+    return token
+
+
+def _compile_regexes(patterns: list[str], field_name: str) -> None:
+    for pattern in patterns:
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise ConfigError(f"Invalid regex in {field_name}: {pattern!r}: {exc}") from exc
+
+
+def load_config(path: Path) -> AppConfig:
+    if not path.exists():
+        raise ConfigError(f"Config file not found: {path}")
+
+    base_dir = path.resolve().parent
+    raw_data = tomllib.loads(path.read_text(encoding="utf-8"))
+    data = _expand_env_vars(raw_data)
+
+    config = AppConfig()
+
+    if "interval_seconds" in data:
+        config.interval_seconds = int(data["interval_seconds"])
+    if "download_dir" in data:
+        config.download_dir = _as_path(base_dir, data["download_dir"], "download_dir")
+    else:
+        config.download_dir = _as_path(base_dir, config.download_dir, "download_dir")
+    if "state_file" in data:
+        config.state_file = _as_path(base_dir, data["state_file"], "state_file")
+    else:
+        config.state_file = _as_path(base_dir, config.state_file, "state_file")
+    if "keep_last" in data:
+        config.keep_last = int(data["keep_last"])
+    if "fetch_path" in data:
+        config.fetch_path = str(data["fetch_path"])
+
+    github = data.get("github", {}) or {}
+    if not isinstance(github, dict):
+        raise ConfigError("[github] must be a table")
+    config.github.api_base = str(github.get("api_base", config.github.api_base))
+
+    config.github.token = _normalize_token(github.get("token"))
+    if config.github.token is None:
+        config.github.token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GITHUB_OAUTH_TOKEN")
+
+    repos = data.get("repos")
+    if repos is None:
+        raise ConfigError("Missing [[repos]] in config")
+    if not isinstance(repos, list) or not repos:
+        raise ConfigError("[[repos]] must be a non-empty list")
+
+    parsed_repos: list[RepoConfig] = []
+    for idx, repo_data in enumerate(repos):
+        if not isinstance(repo_data, dict):
+            raise ConfigError(f"repos[{idx}] must be a table")
+
+        name = repo_data.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ConfigError(f"repos[{idx}].name must be a non-empty string")
+
+        include_assets = repo_data.get("include_assets", []) or []
+        exclude_assets = repo_data.get("exclude_assets", []) or []
+        if not isinstance(include_assets, list) or not all(isinstance(x, str) for x in include_assets):
+            raise ConfigError(f"repos[{idx}].include_assets must be a list of strings")
+        if not isinstance(exclude_assets, list) or not all(isinstance(x, str) for x in exclude_assets):
+            raise ConfigError(f"repos[{idx}].exclude_assets must be a list of strings")
+
+        _compile_regexes(include_assets, f"repos[{idx}].include_assets")
+        _compile_regexes(exclude_assets, f"repos[{idx}].exclude_assets")
+
+        keep_last_raw = repo_data.get("keep_last", None)
+        keep_last = int(keep_last_raw) if keep_last_raw is not None else None
+
+        repo_cfg = RepoConfig(
+            name=name.strip(),
+            include_assets=include_assets,
+            exclude_assets=exclude_assets,
+            include_prereleases=bool(repo_data.get("include_prereleases", False)),
+            include_drafts=bool(repo_data.get("include_drafts", False)),
+            keep_last=keep_last,
+        )
+        parsed_repos.append(repo_cfg)
+
+    config.repos = parsed_repos
+
+    if config.interval_seconds <= 0:
+        raise ConfigError("interval_seconds must be > 0")
+    if config.keep_last <= 0:
+        raise ConfigError("keep_last must be > 0")
+    if not config.fetch_path:
+        raise ConfigError("fetch_path must be non-empty")
+
+    for idx, repo_cfg in enumerate(config.repos):
+        if repo_cfg.keep_last is not None and repo_cfg.keep_last <= 0:
+            raise ConfigError(f"repos[{idx}].keep_last must be > 0 when set")
+
+    return config
+

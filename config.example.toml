@@ -1,0 +1,19 @@
+interval_seconds = 600
+download_dir = "./downloads"
+state_file = "./state.json"
+keep_last = 5
+fetch_path = "fetch"
+
+[github]
+# 建议使用环境变量：export GITHUB_TOKEN=...
+token = "${GITHUB_TOKEN}"
+api_base = "https://api.github.com"
+
+[[repos]]
+name = "gruntwork-io/fetch"
+# include_assets/exclude_assets 均为正则表达式（Python re），为空则表示下载全部资产
+include_assets = ["^fetch_linux_amd64$"]
+exclude_assets = []
+include_prereleases = false
+include_drafts = false
+keep_last = 3
