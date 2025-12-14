@@ -1,4 +1,4 @@
-interval_seconds = 600
+interval_seconds = 172800
 download_dir = "./downloads"
 state_file = "./state.json"
 keep_last = 5

@@ -41,7 +41,7 @@ class RepoConfig:
 
 @dataclass
 class AppConfig:
-    interval_seconds: int = 600
+    interval_seconds: int = 172800
     download_dir: Path = Path("./downloads")
     state_file: Path = Path("./state.json")
     keep_last: int = 5

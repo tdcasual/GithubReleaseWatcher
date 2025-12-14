@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import queue
+import random
 import re
 import secrets
 import threading
@@ -251,7 +252,7 @@ def _apply_overrides(config: AppConfig, overrides: dict[str, Any], *, base_dir: 
     if "keep_last" in app_overrides:
         config.keep_last = _safe_int(app_overrides["keep_last"], min_value=1, max_value=1000)
     if "interval_seconds" in app_overrides:
-        config.interval_seconds = _safe_int(app_overrides["interval_seconds"], min_value=1, max_value=86_400)
+        config.interval_seconds = _safe_int(app_overrides["interval_seconds"], min_value=1, max_value=31_536_000)
 
     storage_overrides = overrides.get("storage", {}) if isinstance(overrides.get("storage"), dict) else {}
     if storage_overrides:
@@ -366,6 +367,8 @@ class WatcherService:
 
         self._scheduler_enabled = True
         self._next_run_at: float | None = None
+        self._repo_next_run_at: dict[str, float] = {}
+        self._rng = random.Random()
 
         self._run_requested = False
         self._run_in_progress = False
@@ -393,7 +396,8 @@ class WatcherService:
         with self._lock:
             self._scheduler_enabled = bool(scheduler_enabled)
             if self._scheduler_enabled:
-                self._next_run_at = time.time() if run_immediately else time.time() + self._interval_seconds(default=60)
+                self._init_repo_schedule_locked(run_immediately=run_immediately)
+                self._refresh_global_next_run_at_locked()
             else:
                 self._next_run_at = None
 
@@ -419,6 +423,80 @@ class WatcherService:
             if self._config is None:
                 return default
             return int(self._config.interval_seconds)
+
+    def _enabled_repo_keys(self, config: AppConfig) -> list[str]:
+        keys: list[str] = []
+        for repo_cfg in config.repos:
+            if not bool(getattr(repo_cfg, "enabled", True)):
+                continue
+            try:
+                keys.append(_repo_key_from_spec(repo_cfg.name))
+            except Exception:
+                keys.append(repo_cfg.name)
+        return keys
+
+    def _refresh_global_next_run_at_locked(self) -> None:
+        if not self._scheduler_enabled:
+            self._next_run_at = None
+            return
+        if not self._repo_next_run_at:
+            self._next_run_at = None
+            return
+        self._next_run_at = min(self._repo_next_run_at.values())
+
+    def _init_repo_schedule_locked(self, *, run_immediately: bool) -> None:
+        config = self._config
+        self._repo_next_run_at.clear()
+        if config is None:
+            self._next_run_at = None
+            return
+
+        now = time.time()
+        base = max(60, int(config.interval_seconds))
+        for key in self._enabled_repo_keys(config):
+            self._repo_next_run_at[key] = now if run_immediately else now + base
+
+    def _sync_repo_schedule_locked(self) -> None:
+        config = self._config
+        if config is None:
+            self._repo_next_run_at.clear()
+            self._next_run_at = None
+            return
+
+        enabled_keys = set(self._enabled_repo_keys(config))
+        now = time.time()
+        for key in list(self._repo_next_run_at.keys()):
+            if key not in enabled_keys:
+                self._repo_next_run_at.pop(key, None)
+        for key in enabled_keys:
+            if key not in self._repo_next_run_at:
+                self._repo_next_run_at[key] = now
+
+        self._refresh_global_next_run_at_locked()
+
+    def _recommended_interval_seconds(self, config: AppConfig, repo_state: dict[str, Any]) -> int:
+        base = max(60, int(getattr(config, "interval_seconds", 172800) or 172800))
+        update = repo_state.get("update", {}) if isinstance(repo_state.get("update"), dict) else {}
+        median = update.get("median_interval_seconds")
+        if isinstance(median, (int, float)) and float(median) > 0:
+            return max(base, int(float(median) * 1.1))
+        return base
+
+    def _compute_next_repo_run_at(self, config: AppConfig, repo_state: dict[str, Any], *, now: float) -> float:
+        interval = float(self._recommended_interval_seconds(config, repo_state))
+        stats = repo_state.get("stats", {}) if isinstance(repo_state.get("stats"), dict) else {}
+        ok = stats.get("last_check_ok")
+        last_error_type = str(stats.get("last_error_type") or "")
+        had_net = bool(stats.get("last_check_had_network_error", False))
+
+        if ok is True:
+            return now + interval
+
+        if last_error_type == "network" or had_net:
+            retry_seconds = float(self._rng.uniform(2 * 3600, 6 * 3600))
+            return now + retry_seconds
+
+        return now + interval
 
     def reload_config(self) -> None:
         with self._lock:
@@ -447,6 +525,7 @@ class WatcherService:
                 logging.exception("Failed applying overrides; continuing with base config")
 
             self._config = config
+            self._sync_repo_schedule_locked()
 
     def auth_username(self) -> str:
         with self._lock:
@@ -520,9 +599,11 @@ class WatcherService:
     def set_scheduler(self, enabled: bool) -> None:
         with self._lock:
             self._scheduler_enabled = bool(enabled)
-            if self._scheduler_enabled and self._next_run_at is None:
-                self._next_run_at = time.time()
-            if not self._scheduler_enabled:
+            if self._scheduler_enabled:
+                if not self._repo_next_run_at:
+                    self._init_repo_schedule_locked(run_immediately=True)
+                self._refresh_global_next_run_at_locked()
+            else:
                 self._next_run_at = None
 
     def update_settings(self, payload: dict[str, Any]) -> None:
@@ -542,7 +623,7 @@ class WatcherService:
             overrides.setdefault("app", {})["keep_last"] = _safe_int(app_patch["keep_last"], min_value=1, max_value=1000)
         if "interval_seconds" in app_patch:
             overrides.setdefault("app", {})["interval_seconds"] = _safe_int(
-                app_patch["interval_seconds"], min_value=1, max_value=86_400
+                app_patch["interval_seconds"], min_value=1, max_value=31_536_000
             )
 
         storage_patch = payload.get("storage", {}) if isinstance(payload.get("storage"), dict) else {}
@@ -643,8 +724,11 @@ class WatcherService:
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
-            next_run_at = self._next_run_at
             config = self._config
+            next_run_at = (
+                min(self._repo_next_run_at.values()) if self._scheduler_enabled and self._repo_next_run_at else None
+            )
+            base_interval_seconds = int(config.interval_seconds) if config is not None else None
             return {
                 "started_at": self._started_at,
                 "config_path": str(self._config_path),
@@ -657,6 +741,9 @@ class WatcherService:
                 "scheduler": {
                     "enabled": self._scheduler_enabled,
                     "next_run_at": datetime.fromtimestamp(next_run_at, tz=timezone.utc).isoformat() if next_run_at else None,
+                    "mode": "adaptive_per_repo",
+                    "base_interval_seconds": base_interval_seconds,
+                    "repos_scheduled": len(self._repo_next_run_at),
                 },
                 "run": {
                     "requested": self._run_requested,
@@ -673,6 +760,132 @@ class WatcherService:
                 raise RuntimeError("Config not loaded")
             state_path = config.state_file
         return load_state(state_path)
+
+    def list_repo_summaries(self) -> list[dict[str, Any]]:
+        with self._lock:
+            config = copy.deepcopy(self._config) if self._config is not None else None
+            next_runs = dict(self._repo_next_run_at)
+            scheduler_enabled = bool(self._scheduler_enabled)
+
+        if config is None:
+            raise RuntimeError("Config not loaded")
+
+        state = load_state(config.state_file)
+        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
+
+        items: list[dict[str, Any]] = []
+        for repo_cfg in config.repos:
+            try:
+                key = _repo_key_from_spec(repo_cfg.name)
+            except Exception:
+                key = repo_cfg.name
+            repo_state = repos_state.get(key, {}) if isinstance(repos_state.get(key), dict) else {}
+            stats = repo_state.get("stats", {}) if isinstance(repo_state.get("stats"), dict) else {}
+            update = repo_state.get("update", {}) if isinstance(repo_state.get("update"), dict) else {}
+            releases = repo_state.get("releases", {}) if isinstance(repo_state.get("releases"), dict) else {}
+
+            downloaded_releases = 0
+            for entry in releases.values():
+                if not isinstance(entry, dict):
+                    continue
+                assets = entry.get("downloaded_assets", [])
+                if isinstance(assets, list) and assets:
+                    downloaded_releases += 1
+
+            next_run_at = next_runs.get(key) if scheduler_enabled else None
+            items.append(
+                {
+                    "key": key,
+                    "enabled": bool(getattr(repo_cfg, "enabled", True)),
+                    "name": repo_cfg.name,
+                    "keep_last": repo_cfg.keep_last,
+                    "keep_last_effective": (repo_cfg.keep_last or config.keep_last),
+                    "asset_types": list(getattr(repo_cfg, "asset_types", []) or []),
+                    "include_prereleases": bool(repo_cfg.include_prereleases),
+                    "include_drafts": bool(repo_cfg.include_drafts),
+                    "stats": stats,
+                    "update": update,
+                    "downloaded_releases_total": downloaded_releases,
+                    "next_run_at": datetime.fromtimestamp(next_run_at, tz=timezone.utc).isoformat() if next_run_at else None,
+                    "recommended_interval_seconds": self._recommended_interval_seconds(config, repo_state),
+                }
+            )
+
+        return items
+
+    def get_repo_summary(self, repo_key: str) -> dict[str, Any]:
+        repo_key = str(repo_key or "").strip()
+        if not repo_key:
+            raise ValueError("repo_key required")
+
+        with self._lock:
+            config = copy.deepcopy(self._config) if self._config is not None else None
+            next_run_at = self._repo_next_run_at.get(repo_key) if self._scheduler_enabled else None
+
+        if config is None:
+            raise RuntimeError("Config not loaded")
+
+        state = load_state(config.state_file)
+        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
+        repo_state = repos_state.get(repo_key, {}) if isinstance(repos_state.get(repo_key), dict) else {}
+        stats = repo_state.get("stats", {}) if isinstance(repo_state.get("stats"), dict) else {}
+        update = repo_state.get("update", {}) if isinstance(repo_state.get("update"), dict) else {}
+        releases = repo_state.get("releases", {}) if isinstance(repo_state.get("releases"), dict) else {}
+
+        downloaded_releases = 0
+        for entry in releases.values():
+            if not isinstance(entry, dict):
+                continue
+            assets = entry.get("downloaded_assets", [])
+            if isinstance(assets, list) and assets:
+                downloaded_releases += 1
+
+        cfg_repo: RepoConfig | None = None
+        for repo_cfg in config.repos:
+            try:
+                key = _repo_key_from_spec(repo_cfg.name)
+            except Exception:
+                key = repo_cfg.name
+            if key == repo_key:
+                cfg_repo = repo_cfg
+                break
+        if cfg_repo is None:
+            raise ValueError("unknown repo")
+
+        return {
+            "key": repo_key,
+            "enabled": bool(getattr(cfg_repo, "enabled", True)),
+            "name": cfg_repo.name,
+            "keep_last": cfg_repo.keep_last,
+            "keep_last_effective": (cfg_repo.keep_last or config.keep_last),
+            "asset_types": list(getattr(cfg_repo, "asset_types", []) or []),
+            "include_prereleases": bool(cfg_repo.include_prereleases),
+            "include_drafts": bool(cfg_repo.include_drafts),
+            "stats": stats,
+            "update": update,
+            "downloaded_releases_total": downloaded_releases,
+            "next_run_at": datetime.fromtimestamp(next_run_at, tz=timezone.utc).isoformat() if next_run_at else None,
+            "recommended_interval_seconds": self._recommended_interval_seconds(config, repo_state),
+        }
+
+    def get_repo_activity(self, repo_key: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        repo_key = str(repo_key or "").strip()
+        if not repo_key:
+            raise ValueError("repo_key required")
+        limit = max(1, min(int(limit), 2000))
+
+        with self._lock:
+            config = copy.deepcopy(self._config) if self._config is not None else None
+
+        if config is None:
+            raise RuntimeError("Config not loaded")
+
+        state = load_state(config.state_file)
+        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
+        repo_state = repos_state.get(repo_key, {}) if isinstance(repos_state.get(repo_key), dict) else {}
+        items = repo_state.get("activity", []) if isinstance(repo_state.get("activity"), list) else []
+        tail = items[-limit:]
+        return [x for x in tail if isinstance(x, dict)]
 
     def test_webdav(self, patch: dict[str, Any] | None = None) -> None:
         with self._lock:
@@ -740,6 +953,7 @@ class WatcherService:
 
         exit_code: int | None = None
         error: str | None = None
+        processed_keys: list[str] = []
         try:
             if config_snapshot is None:
                 raise RuntimeError("Config not loaded")
@@ -755,11 +969,27 @@ class WatcherService:
                 if not filtered:
                     raise ValueError("unknown repo")
                 config_snapshot.repos = filtered
+                processed_keys = [repo_key]
+            else:
+                processed_keys = self._enabled_repo_keys(config_snapshot)
             exit_code = watcher_run_once(config_snapshot)
         except Exception as exc:
             error = str(exc)
             logging.exception("run_once failed")
         finally:
+            now = time.time()
+            if config_snapshot is not None and processed_keys and self._scheduler_enabled:
+                try:
+                    state = load_state(config_snapshot.state_file)
+                except Exception:
+                    state = {"repos": {}}
+                repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
+                with self._lock:
+                    for key in processed_keys:
+                        repo_state = repos_state.get(key, {}) if isinstance(repos_state.get(key), dict) else {}
+                        self._repo_next_run_at[key] = self._compute_next_repo_run_at(config_snapshot, repo_state, now=now)
+                    self._sync_repo_schedule_locked()
+                    self._refresh_global_next_run_at_locked()
             with self._lock:
                 self._run_in_progress = False
                 if self._last_run:
@@ -769,20 +999,31 @@ class WatcherService:
 
     def _scheduler_loop(self) -> None:
         while not self._stop_event.is_set():
+            now = time.time()
+            due_repo: str | None = None
+            next_run: float | None = None
             with self._lock:
                 enabled = self._scheduler_enabled
-                next_run = self._next_run_at
+                run_busy = self._run_requested or self._run_in_progress
+                if enabled and self._repo_next_run_at:
+                    next_run = min(self._repo_next_run_at.values())
+                    if not run_busy:
+                        for key, ts in self._repo_next_run_at.items():
+                            if ts <= now and (due_repo is None or ts < self._repo_next_run_at.get(due_repo, ts)):
+                                due_repo = key
+                self._next_run_at = next_run if enabled else None
 
             if not enabled or next_run is None:
                 self._stop_event.wait(timeout=0.5)
                 continue
 
-            now = time.time()
-            if now >= next_run:
-                self.enqueue_run_once(source="scheduler")
-                interval = self._interval_seconds(default=60)
-                with self._lock:
-                    self._next_run_at = now + interval
+            if due_repo is not None:
+                queued = self.enqueue_run_once(source="scheduler", repo=due_repo)
+                if queued:
+                    with self._lock:
+                        # Temporary placeholder to avoid rapid re-queue attempts.
+                        self._repo_next_run_at[due_repo] = now + 60
+                        self._refresh_global_next_run_at_locked()
                 continue
 
             self._stop_event.wait(timeout=min(0.5, max(0.0, next_run - now)))
@@ -965,6 +1206,44 @@ class Handler(BaseHTTPRequestHandler):
             payload = self.server.app.snapshot()
             self._send_json(payload)
             return
+
+        if path == "/api/v1/repos" and self.command == "GET":
+            try:
+                items = self.server.app.list_repo_summaries()
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json({"items": items})
+            return
+
+        if path.startswith("/api/v1/repos/") and self.command == "GET":
+            rest = path[len("/api/v1/repos/") :]
+            parts = [p for p in rest.split("/") if p]
+            if len(parts) >= 2:
+                repo_key = f"{parts[0]}/{parts[1]}"
+                if len(parts) == 2:
+                    try:
+                        data = self.server.app.get_repo_summary(repo_key)
+                    except Exception as exc:
+                        self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                        return
+                    self._send_json({"repo": data})
+                    return
+                if len(parts) == 3 and parts[2] == "activity":
+                    qs = parse_qs(split.query)
+                    limit = 200
+                    if "limit" in qs and qs["limit"]:
+                        try:
+                            limit = _safe_int(qs["limit"][0], min_value=1, max_value=2000)
+                        except Exception:
+                            limit = 200
+                    try:
+                        items = self.server.app.get_repo_activity(repo_key, limit=limit)
+                    except Exception as exc:
+                        self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                        return
+                    self._send_json({"items": items})
+                    return
 
         if path == "/api/v1/config" and self.command == "GET":
             payload = self.server.app.snapshot().get("config")

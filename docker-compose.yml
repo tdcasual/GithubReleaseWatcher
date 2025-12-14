@@ -1,0 +1,12 @@
+services:
+  github-release-watcher:
+    build: .
+    container_name: github-release-watcher
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    volumes:
+      - ./data:/data
+    command: ["--config", "/data/config.toml", "--web", "--web-host", "0.0.0.0", "--web-port", "8000"]

@@ -4,18 +4,107 @@ import json
 import logging
 import re
 import shutil
+import statistics
 from contextlib import suppress
+from datetime import datetime, timezone
 import time
 from pathlib import Path
 from typing import Iterable
 
+import requests
+
 from .config import AppConfig, RepoConfig
 from .downloader import DownloadError, GitHubReleaseAssetDownloader
 from .github import Asset, GitHubApiError, GitHubClient, Release, parse_repo_spec
-from .state import get_repo_state, load_state, mark_release_processed, remove_release_state, save_state
+from .state import append_repo_activity, get_repo_state, load_state, mark_release_processed, remove_release_state, save_state
 from .webdav import WebDAVClient, WebDAVError
 
 activity_logger = logging.getLogger("github_release_watcher.activity")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(tz=timezone.utc).isoformat()
+
+
+def _repo_stats(repo_state: dict) -> dict:
+    stats = repo_state.setdefault("stats", {})
+    if not isinstance(stats, dict):
+        stats = {}
+        repo_state["stats"] = stats
+    return stats
+
+
+def _inc_stat(stats: dict, key: str, amount: int = 1) -> None:
+    try:
+        stats[key] = int(stats.get(key, 0) or 0) + int(amount)
+    except Exception:
+        stats[key] = int(amount)
+
+
+def _mark_last_error(stats: dict, *, error_type: str, error: str) -> None:
+    stats["last_check_had_errors"] = True
+    stats["last_error_type"] = error_type
+    stats["last_error"] = error
+    if error_type == "network":
+        stats["last_check_had_network_error"] = True
+
+
+def _is_network_error(exc: Exception) -> bool:
+    if isinstance(exc, requests.RequestException):
+        return True
+    msg = str(exc).lower()
+    if isinstance(exc, GitHubApiError):
+        if "request failed after retries" in msg:
+            return True
+        if "429" in msg or "502" in msg or "503" in msg or "504" in msg:
+            return True
+        return False
+    if isinstance(exc, WebDAVError):
+        return True
+    if isinstance(exc, DownloadError):
+        if "transient http" in msg:
+            return True
+        if "timeout" in msg or "timed out" in msg:
+            return True
+        if "connection" in msg or "reset" in msg:
+            return True
+        if "download failed after" in msg:
+            return True
+    return False
+
+
+def _record_repo_event(repo_state: dict, *, event_type: str, message: str, tag: str | None = None, **extra) -> None:
+    payload = {"type": event_type, "message": message}
+    if tag:
+        payload["tag"] = tag
+    payload.update({k: v for k, v in extra.items() if v is not None})
+    append_repo_activity(repo_state, payload)
+
+
+def _compute_update_stats(releases: list[Release]) -> dict:
+    times: list[datetime] = []
+    for r in releases:
+        t = r.published_at or r.created_at
+        if t is not None:
+            times.append(t)
+    times.sort(reverse=True)
+
+    intervals: list[float] = []
+    for a, b in zip(times, times[1:], strict=False):
+        delta = (a - b).total_seconds()
+        if delta > 0:
+            intervals.append(delta)
+
+    if len(intervals) < 2:
+        return {"sample_count": len(intervals), "median_interval_seconds": None, "mean_interval_seconds": None}
+
+    median = float(statistics.median(intervals))
+    mean = float(sum(intervals) / len(intervals))
+    return {
+        "sample_count": len(intervals),
+        "median_interval_seconds": int(median),
+        "mean_interval_seconds": int(mean),
+    }
 
 
 def watch_loop(config: AppConfig) -> int:
@@ -49,12 +138,60 @@ def run_once(config: AppConfig) -> int:
         if not getattr(repo_cfg, "enabled", True):
             logging.info("Skipping disabled repo: %s", repo_cfg.name)
             continue
+
+        try:
+            owner, repo, _ = parse_repo_spec(repo_cfg.name)
+            repo_key = f"{owner}/{repo}"
+        except Exception as exc:
+            logging.exception("Invalid repo config: %s", repo_cfg.name)
+            had_errors = True
+            continue
+
+        repo_state = get_repo_state(state, repo_key)
+        stats = _repo_stats(repo_state)
+        _inc_stat(stats, "checks_total", 1)
+        stats["last_check_started_at"] = _utc_now_iso()
+        stats["last_check_finished_at"] = None
+        stats["last_check_ok"] = None
+        stats["last_check_had_errors"] = False
+        stats["last_check_had_network_error"] = False
+        stats["last_error_type"] = None
+        stats["last_error"] = None
+        _record_repo_event(repo_state, event_type="check_start", message=f"{repo_key} 开始检查")
+
         try:
             ok = _process_repo(config, repo_cfg, github, downloader, state, webdav=webdav)
             had_errors = had_errors or not ok
-        except Exception:
+        except Exception as exc:
             logging.exception("Failed processing repo %s", repo_cfg.name)
+            ok = False
+            err = str(exc)
+            error_type = "network" if _is_network_error(exc) else "other"
+            _mark_last_error(stats, error_type=error_type, error=err)
+            _inc_stat(stats, "checks_failed", 1)
+            if error_type == "network":
+                _inc_stat(stats, "checks_network_failed", 1)
+            _record_repo_event(repo_state, event_type="check_error", message=err, tag=None, error_type=error_type)
             had_errors = True
+        else:
+            if ok:
+                _inc_stat(stats, "checks_ok", 1)
+                _record_repo_event(repo_state, event_type="check_ok", message="检查成功")
+            else:
+                _inc_stat(stats, "checks_failed", 1)
+                if stats.get("last_check_had_network_error") or stats.get("last_error_type") == "network":
+                    _inc_stat(stats, "checks_network_failed", 1)
+                if not stats.get("last_error"):
+                    _mark_last_error(stats, error_type="other", error="check had errors")
+                _record_repo_event(
+                    repo_state,
+                    event_type="check_error",
+                    message=str(stats.get("last_error") or "检查有错误"),
+                    error_type=str(stats.get("last_error_type") or "other"),
+                )
+        finally:
+            stats["last_check_finished_at"] = _utc_now_iso()
+            stats["last_check_ok"] = bool(ok)
 
     try:
         save_state(config.state_file, state)
@@ -87,6 +224,29 @@ def _process_repo(
     wanted_tags = [r.tag_name for r in wanted if r.tag_name]
 
     repo_state = get_repo_state(state, repo_key)
+    stats = _repo_stats(repo_state)
+
+    stats["keep_last_effective"] = int(keep_last)
+    latest = wanted[0] if wanted else None
+    if latest is not None:
+        stats["latest_release_tag"] = latest.tag_name
+        stats["latest_release_published_at"] = latest.published_at.isoformat() if latest.published_at else None
+        stats["current_tag"] = latest.tag_name
+        stats["current_published_at"] = latest.published_at.isoformat() if latest.published_at else None
+
+        releases_state = repo_state.get("releases", {})
+        known_tags = set(releases_state.keys()) if isinstance(releases_state, dict) else set()
+        if latest.tag_name and latest.tag_name not in known_tags:
+            _inc_stat(stats, "new_releases_detected", 1)
+            _record_repo_event(repo_state, event_type="new_release", message=f"发现新版本：{latest.tag_name}", tag=latest.tag_name)
+
+    update = repo_state.setdefault("update", {})
+    if not isinstance(update, dict):
+        update = {}
+        repo_state["update"] = update
+    update_stats = _compute_update_stats(releases)
+    update.update(update_stats)
+    update["computed_at"] = _utc_now_iso()
 
     ok = True
     if webdav is None:
@@ -102,6 +262,14 @@ def _process_repo(
             )
 
         _cleanup_old_releases_local(repo_key, repo_dir, wanted_tags, repo_state)
+        stats = _repo_stats(repo_state)
+        stats["storage_mode"] = "local"
+        stats["download_root"] = str(repo_dir)
+        current_tag = stats.get("current_tag")
+        releases_state = repo_state.get("releases", {})
+        if isinstance(current_tag, str) and isinstance(releases_state, dict):
+            current_entry = releases_state.get(current_tag, {}) if isinstance(releases_state.get(current_tag), dict) else {}
+            stats["current_processed_at"] = current_entry.get("processed_at")
         return ok
 
     cache_root = config.download_dir / ".webdav_cache"
@@ -126,6 +294,14 @@ def _process_repo(
         )
 
     _cleanup_old_releases_webdav(repo_key, owner, repo, webdav, wanted_tags, repo_state)
+    stats = _repo_stats(repo_state)
+    stats["storage_mode"] = "webdav"
+    stats["download_root"] = f"webdav:{owner}/{repo}"
+    current_tag = stats.get("current_tag")
+    releases_state = repo_state.get("releases", {})
+    if isinstance(current_tag, str) and isinstance(releases_state, dict):
+        current_entry = releases_state.get(current_tag, {}) if isinstance(releases_state.get(current_tag), dict) else {}
+        stats["current_processed_at"] = current_entry.get("processed_at")
     return ok
 
 def _release_metadata_bytes(release: Release) -> bytes:
@@ -256,7 +432,14 @@ def _ensure_release_downloaded_local(
     if not selected_assets:
         logging.info("[%s:%s] No assets matched rules; marking as processed.", repo_key, tag)
         existing_state = repo_state.get("releases", {}).get(tag, {}) if isinstance(repo_state.get("releases"), dict) else {}
-        mark_release_processed(repo_state, tag, list(existing_state.get("downloaded_assets", []) or []))
+        mark_release_processed(
+            repo_state,
+            tag,
+            list(existing_state.get("downloaded_assets", []) or []),
+            published_at=release.published_at.isoformat() if release.published_at else None,
+            created_at=release.created_at.isoformat() if release.created_at else None,
+            html_url=release.html_url,
+        )
         return True
 
     existing_state = repo_state.get("releases", {}).get(tag, {}) if isinstance(repo_state.get("releases"), dict) else {}
@@ -281,6 +464,10 @@ def _ensure_release_downloaded_local(
             downloader.download_release_asset(repo_https_url, tag, asset, tag_dir)
         except DownloadError as exc:
             logging.error("[%s:%s] Download failed for %s: %s", repo_key, tag, asset.name, exc)
+            stats = _repo_stats(repo_state)
+            _inc_stat(stats, "download_errors_total", 1)
+            error_type = "network" if _is_network_error(exc) else "other"
+            _mark_last_error(stats, error_type=error_type, error=f"{asset.name}: {exc}")
             activity_logger.warning(
                 "%s %s 下载失败：%s",
                 repo_key,
@@ -293,11 +480,22 @@ def _ensure_release_downloaded_local(
                     "path": str(tag_dir),
                 },
             )
+            _record_repo_event(
+                repo_state,
+                event_type="download_error",
+                message=f"{asset.name} 下载失败：{exc}",
+                tag=tag,
+                asset=asset.name,
+                error_type=error_type,
+                path=str(tag_dir),
+            )
             ok = False
             continue
 
         if _is_asset_valid(asset, dest_file):
             downloaded_assets.add(asset.name)
+            stats = _repo_stats(repo_state)
+            _inc_stat(stats, "download_assets_total", 1)
             activity_logger.info(
                 "%s %s 下载：%s → %s",
                 repo_key,
@@ -311,8 +509,23 @@ def _ensure_release_downloaded_local(
                     "path": str(tag_dir),
                 },
             )
+            _record_repo_event(
+                repo_state,
+                event_type="download",
+                message=f"下载：{asset.name}",
+                tag=tag,
+                asset=asset.name,
+                path=str(tag_dir),
+            )
 
-    mark_release_processed(repo_state, tag, sorted(downloaded_assets))
+    mark_release_processed(
+        repo_state,
+        tag,
+        sorted(downloaded_assets),
+        published_at=release.published_at.isoformat() if release.published_at else None,
+        created_at=release.created_at.isoformat() if release.created_at else None,
+        html_url=release.html_url,
+    )
     return ok
 
 
@@ -354,7 +567,14 @@ def _ensure_release_downloaded_webdav(
     if not selected_assets:
         logging.info("[%s:%s] No assets matched rules; marking as processed.", repo_key, tag)
         existing_state = repo_state.get("releases", {}).get(tag, {}) if isinstance(repo_state.get("releases"), dict) else {}
-        mark_release_processed(repo_state, tag, list(existing_state.get("downloaded_assets", []) or []))
+        mark_release_processed(
+            repo_state,
+            tag,
+            list(existing_state.get("downloaded_assets", []) or []),
+            published_at=release.published_at.isoformat() if release.published_at else None,
+            created_at=release.created_at.isoformat() if release.created_at else None,
+            html_url=release.html_url,
+        )
         return True
 
     existing_state = repo_state.get("releases", {}).get(tag, {}) if isinstance(repo_state.get("releases"), dict) else {}
@@ -380,12 +600,25 @@ def _ensure_release_downloaded_webdav(
             result = downloader.download_release_asset(repo_https_url, tag, asset, cache_tag_dir)
         except DownloadError as exc:
             logging.error("[%s:%s] Download failed for %s: %s", repo_key, tag, asset.name, exc)
+            stats = _repo_stats(repo_state)
+            _inc_stat(stats, "download_errors_total", 1)
+            error_type = "network" if _is_network_error(exc) else "other"
+            _mark_last_error(stats, error_type=error_type, error=f"{asset.name}: {exc}")
             activity_logger.warning(
                 "%s %s 下载失败：%s",
                 repo_key,
                 tag,
                 asset.name,
                 extra={"event_type": "download_error", "repo": repo_key, "tag": tag, "path": remote_tag_dir},
+            )
+            _record_repo_event(
+                repo_state,
+                event_type="download_error",
+                message=f"{asset.name} 下载失败：{exc}",
+                tag=tag,
+                asset=asset.name,
+                error_type=error_type,
+                path=f"webdav:{remote_tag_dir}",
             )
             ok = False
             continue
@@ -411,6 +644,8 @@ def _ensure_release_downloaded_webdav(
                 result.path.unlink()
 
         downloaded_assets.add(asset.name)
+        stats = _repo_stats(repo_state)
+        _inc_stat(stats, "download_assets_total", 1)
         activity_logger.info(
             "%s %s 下载：%s → %s",
             repo_key,
@@ -419,8 +654,23 @@ def _ensure_release_downloaded_webdav(
             f"webdav:{remote_tag_dir}",
             extra={"event_type": "download", "repo": repo_key, "tag": tag, "path": f"webdav:{remote_tag_dir}"},
         )
+        _record_repo_event(
+            repo_state,
+            event_type="download",
+            message=f"下载：{asset.name}",
+            tag=tag,
+            asset=asset.name,
+            path=f"webdav:{remote_tag_dir}",
+        )
 
-    mark_release_processed(repo_state, tag, sorted(downloaded_assets))
+    mark_release_processed(
+        repo_state,
+        tag,
+        sorted(downloaded_assets),
+        published_at=release.published_at.isoformat() if release.published_at else None,
+        created_at=release.created_at.isoformat() if release.created_at else None,
+        html_url=release.html_url,
+    )
     with suppress(Exception):
         if cache_tag_dir.exists() and not any(cache_tag_dir.iterdir()):
             cache_tag_dir.rmdir()
@@ -435,11 +685,22 @@ def _cleanup_old_releases_local(repo_key: str, repo_dir: Path, keep_tags: list[s
             continue
         if child.name in keep_dir_names:
             continue
-        if not (child / "release.json").exists():
+        meta_path = child / "release.json"
+        if not meta_path.exists():
             continue
+
+        deleted_tag = child.name
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            if isinstance(meta, dict) and meta.get("tag_name"):
+                deleted_tag = str(meta.get("tag_name") or deleted_tag)
+        except Exception:
+            deleted_tag = child.name
 
         logging.info("[%s] Removing old release directory: %s", repo_key, child)
         shutil.rmtree(child, ignore_errors=True)
+        stats = _repo_stats(repo_state)
+        _inc_stat(stats, "cleanup_tags_total", 1)
         activity_logger.info(
             "%s 删除旧版本：%s → %s",
             repo_key,
@@ -451,6 +712,13 @@ def _cleanup_old_releases_local(repo_key: str, repo_dir: Path, keep_tags: list[s
                 "tag": child.name,
                 "path": str(child),
             },
+        )
+        _record_repo_event(
+            repo_state,
+            event_type="cleanup",
+            message=f"删除旧版本：{deleted_tag}",
+            tag=deleted_tag,
+            path=str(child),
         )
 
     keep_tag_set = set(keep_tags)
@@ -501,6 +769,8 @@ def _cleanup_old_releases_webdav(
             ok = False
 
         if ok:
+            stats = _repo_stats(repo_state)
+            _inc_stat(stats, "cleanup_tags_total", 1)
             activity_logger.info(
                 "%s 删除旧版本：%s → %s",
                 repo_key,
@@ -508,4 +778,23 @@ def _cleanup_old_releases_webdav(
                 f"webdav:{remote_tag_dir}",
                 extra={"event_type": "cleanup", "repo": repo_key, "tag": tag, "path": f"webdav:{remote_tag_dir}"},
             )
+            _record_repo_event(
+                repo_state,
+                event_type="cleanup",
+                message=f"删除旧版本：{tag}",
+                tag=tag,
+                path=f"webdav:{remote_tag_dir}",
+            )
             remove_release_state(repo_state, tag)
+        else:
+            stats = _repo_stats(repo_state)
+            _inc_stat(stats, "cleanup_errors_total", 1)
+            _mark_last_error(stats, error_type="network", error=f"cleanup failed: {tag}")
+            _record_repo_event(
+                repo_state,
+                event_type="cleanup_error",
+                message=f"删除旧版本失败：{tag}",
+                tag=tag,
+                error_type="network",
+                path=f"webdav:{remote_tag_dir}",
+            )

@@ -7,6 +7,7 @@ __pycache__/
 
 # Tool outputs
 downloads/
+data/
 state.json
 config.override.json
 .tools/

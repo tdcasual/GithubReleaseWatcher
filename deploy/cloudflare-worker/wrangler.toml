@@ -1,0 +1,12 @@
+name = "github-release-watcher-proxy"
+main = "src/index.js"
+compatibility_date = "2025-12-14"
+
+[vars]
+# Upstream base URL of your self-hosted watcher web server (Docker/VPS/NAS),
+# e.g. "https://watcher.example.com" (no trailing slash).
+UPSTREAM = "https://YOUR_BACKEND"
+
+# Optional Basic Auth. Recommend using `wrangler secret put` for password.
+# BASIC_AUTH_USER = "admin"
+# BASIC_AUTH_PASS = "change-me"
