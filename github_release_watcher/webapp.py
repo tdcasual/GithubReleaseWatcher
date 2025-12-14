@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import hmac
 import json
 import logging
 import queue
 import re
+import secrets
 import threading
 import time
 from datetime import datetime, timezone
@@ -15,10 +18,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from .config import AppConfig, ConfigError, RepoConfig, load_config
+from .config import AppConfig, ConfigError, RepoConfig, WebDAVConfig, load_config
 from .github import parse_repo_spec
 from .state import load_state
 from .watcher import run_once as watcher_run_once
+from .webdav import WebDAVClient, WebDAVError
 
 
 def _utc_now_iso() -> str:
@@ -79,22 +83,74 @@ def _compile_regex_list(values: Any, field_name: str) -> list[str]:
 
 def _read_json_file(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return {"version": 1, "updated_at": _utc_now_iso(), "app": {}, "repos": {}}
+        return {"version": 1, "updated_at": _utc_now_iso(), "app": {}, "repos": {}, "auth": {}, "storage": {}}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return {"version": 1, "updated_at": _utc_now_iso(), "app": {}, "repos": {}}
+        return {"version": 1, "updated_at": _utc_now_iso(), "app": {}, "repos": {}, "auth": {}, "storage": {}}
     if not isinstance(data, dict):
-        return {"version": 1, "updated_at": _utc_now_iso(), "app": {}, "repos": {}}
+        return {"version": 1, "updated_at": _utc_now_iso(), "app": {}, "repos": {}, "auth": {}, "storage": {}}
     if data.get("version") != 1:
-        return {"version": 1, "updated_at": _utc_now_iso(), "app": {}, "repos": {}}
+        return {"version": 1, "updated_at": _utc_now_iso(), "app": {}, "repos": {}, "auth": {}, "storage": {}}
     data.setdefault("app", {})
     data.setdefault("repos", {})
+    data.setdefault("auth", {})
+    data.setdefault("storage", {})
     if not isinstance(data["app"], dict):
         data["app"] = {}
     if not isinstance(data["repos"], dict):
         data["repos"] = {}
+    if not isinstance(data["auth"], dict):
+        data["auth"] = {}
+    if not isinstance(data["storage"], dict):
+        data["storage"] = {}
     return data
+
+
+def _pbkdf2_hash(password: str, *, salt_hex: str, iterations: int) -> str:
+    salt = bytes.fromhex(salt_hex)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(iterations))
+    return dk.hex()
+
+
+def _default_auth_config() -> dict[str, Any]:
+    # Default credentials: admin/admin
+    salt_hex = secrets.token_bytes(16).hex()
+    iterations = 200_000
+    return {
+        "username": "admin",
+        "salt": salt_hex,
+        "iterations": iterations,
+        "password_hash": _pbkdf2_hash("admin", salt_hex=salt_hex, iterations=iterations),
+    }
+
+
+def _load_auth_config(overrides: dict[str, Any]) -> dict[str, Any]:
+    auth = overrides.get("auth", {}) if isinstance(overrides.get("auth"), dict) else {}
+    username = auth.get("username")
+    salt = auth.get("salt")
+    iterations = auth.get("iterations")
+    password_hash = auth.get("password_hash")
+
+    if not isinstance(username, str) or not username.strip():
+        return _default_auth_config()
+    if not isinstance(salt, str) or not re.fullmatch(r"[0-9a-f]{16,128}", salt):
+        return _default_auth_config()
+    if not isinstance(iterations, int) or iterations < 50_000 or iterations > 2_000_000:
+        return _default_auth_config()
+    if not isinstance(password_hash, str) or not re.fullmatch(r"[0-9a-f]{32,128}", password_hash):
+        return _default_auth_config()
+
+    return {"username": username.strip(), "salt": salt, "iterations": int(iterations), "password_hash": password_hash}
+
+
+def _verify_password(password: str, auth_config: dict[str, Any]) -> bool:
+    try:
+        expected = str(auth_config["password_hash"])
+        got = _pbkdf2_hash(password, salt_hex=str(auth_config["salt"]), iterations=int(auth_config["iterations"]))
+        return hmac.compare_digest(expected, got)
+    except Exception:
+        return False
 
 
 def _write_json_atomic(path: Path, data: dict[str, Any]) -> None:
@@ -155,22 +211,76 @@ def _public_config(config: AppConfig) -> dict[str, Any]:
             "download_dir": str(config.download_dir),
             "state_file": str(config.state_file),
             "keep_last": config.keep_last,
-            "fetch_path": config.fetch_path,
         },
         "github": {
             "api_base": config.github.api_base,
             "token_configured": bool(config.github.token),
         },
+        "storage": {
+            "mode": str(getattr(config, "storage_mode", "local") or "local"),
+            "local_dir": str(config.download_dir),
+            "webdav": {
+                "base_url": str(getattr(getattr(config, "webdav", None), "base_url", "") or ""),
+                "username": getattr(getattr(config, "webdav", None), "username", None),
+                "verify_tls": bool(getattr(getattr(config, "webdav", None), "verify_tls", True)),
+                "timeout_seconds": int(getattr(getattr(config, "webdav", None), "timeout_seconds", 60) or 60),
+            },
+        },
         "repos": repos,
     }
 
 
-def _apply_overrides(config: AppConfig, overrides: dict[str, Any]) -> None:
+def _resolve_path(base_dir: Path, raw: Any) -> Path:
+    if not isinstance(raw, (str, Path)) or not str(raw).strip():
+        raise ValueError("path must be a non-empty string")
+    p = Path(str(raw).strip())
+    return p if p.is_absolute() else (base_dir / p)
+
+
+def _normalize_storage_mode(raw: Any) -> str:
+    mode = str(raw or "").strip().lower()
+    if mode in ("local", ""):
+        return "local"
+    if mode == "webdav":
+        return "webdav"
+    raise ValueError("storage.mode must be 'local' or 'webdav'")
+
+
+def _apply_overrides(config: AppConfig, overrides: dict[str, Any], *, base_dir: Path) -> None:
     app_overrides = overrides.get("app", {}) if isinstance(overrides.get("app"), dict) else {}
     if "keep_last" in app_overrides:
         config.keep_last = _safe_int(app_overrides["keep_last"], min_value=1, max_value=1000)
     if "interval_seconds" in app_overrides:
         config.interval_seconds = _safe_int(app_overrides["interval_seconds"], min_value=1, max_value=86_400)
+
+    storage_overrides = overrides.get("storage", {}) if isinstance(overrides.get("storage"), dict) else {}
+    if storage_overrides:
+        if "local_dir" in storage_overrides:
+            config.download_dir = _resolve_path(base_dir, storage_overrides.get("local_dir"))
+
+        if "mode" in storage_overrides:
+            config.storage_mode = _normalize_storage_mode(storage_overrides.get("mode"))
+
+        webdav_overrides = storage_overrides.get("webdav", {}) if isinstance(storage_overrides.get("webdav"), dict) else {}
+        if webdav_overrides:
+            if not hasattr(config, "webdav") or not isinstance(getattr(config, "webdav"), WebDAVConfig):
+                config.webdav = WebDAVConfig()
+            if "base_url" in webdav_overrides:
+                config.webdav.base_url = str(webdav_overrides.get("base_url") or "").strip()
+            if "username" in webdav_overrides:
+                raw_user = webdav_overrides.get("username")
+                config.webdav.username = str(raw_user).strip() if isinstance(raw_user, str) and raw_user.strip() else None
+            if "password" in webdav_overrides:
+                raw_pass = webdav_overrides.get("password")
+                config.webdav.password = str(raw_pass) if isinstance(raw_pass, str) and raw_pass else None
+            if "verify_tls" in webdav_overrides:
+                config.webdav.verify_tls = bool(webdav_overrides.get("verify_tls", True))
+            if "timeout_seconds" in webdav_overrides:
+                config.webdav.timeout_seconds = _safe_int(webdav_overrides.get("timeout_seconds"), min_value=5, max_value=600)
+
+        if str(getattr(config, "storage_mode", "local") or "local") == "webdav":
+            if not str(getattr(getattr(config, "webdav", None), "base_url", "") or "").strip():
+                raise ValueError("webdav.base_url is required when storage.mode = 'webdav'")
 
     repo_overrides = overrides.get("repos", {}) if isinstance(overrides.get("repos"), dict) else {}
 
@@ -209,7 +319,7 @@ def _apply_overrides(config: AppConfig, overrides: dict[str, Any]) -> None:
             repo_cfg.include_drafts = bool(patch["include_drafts"])
 
 
-class RingLogBuffer(logging.Handler):
+class ActivityBuffer(logging.Handler):
     def __init__(self, capacity: int = 500):
         super().__init__(level=logging.NOTSET)
         self._lock = threading.Lock()
@@ -217,15 +327,19 @@ class RingLogBuffer(logging.Handler):
         self._items: list[dict[str, Any]] = []
 
     def emit(self, record: logging.LogRecord) -> None:
+        if not record.name.startswith("github_release_watcher.activity"):
+            return
+
         try:
             payload = {
                 "time": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
                 "level": record.levelname,
-                "logger": record.name,
+                "type": getattr(record, "event_type", None),
+                "repo": getattr(record, "repo", None),
+                "tag": getattr(record, "tag", None),
+                "path": getattr(record, "path", None),
                 "message": record.getMessage(),
             }
-            if record.exc_info:
-                payload["exception"] = self.formatException(record.exc_info)
         except Exception:
             return
 
@@ -241,13 +355,14 @@ class RingLogBuffer(logging.Handler):
 
 
 class WatcherService:
-    def __init__(self, config_path: Path, overrides_path: Path | None = None):
+    def __init__(self, config_path: Path, overrides_path: Path | None = None, log_file: Path | None = None):
         self._config_path = config_path
         self._overrides_path = overrides_path or config_path.with_name("config.override.json")
+        self._log_file = log_file
 
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
-        self._queue: queue.Queue[str] = queue.Queue()
+        self._queue: queue.Queue[dict[str, Any]] = queue.Queue()
 
         self._scheduler_enabled = True
         self._next_run_at: float | None = None
@@ -261,6 +376,7 @@ class WatcherService:
         self._config_error: str | None = None
         self._config: AppConfig | None = None
         self._overrides: dict[str, Any] = {}
+        self._auth_config: dict[str, Any] = _default_auth_config()
 
         self._last_run: dict[str, Any] | None = None
 
@@ -309,6 +425,7 @@ class WatcherService:
             self._config_error = None
             self._last_config_reload_at = _utc_now_iso()
             self._overrides = _read_json_file(self._overrides_path)
+            self._auth_config = _load_auth_config(self._overrides)
 
             try:
                 config = load_config(self._config_path)
@@ -324,22 +441,74 @@ class WatcherService:
                 return
 
             try:
-                _apply_overrides(config, self._overrides)
+                _apply_overrides(config, self._overrides, base_dir=self._config_path.resolve().parent)
             except Exception as exc:
                 self._config_error = f"Invalid overrides: {exc}"
                 logging.exception("Failed applying overrides; continuing with base config")
 
             self._config = config
 
-    def enqueue_run_once(self, *, source: str = "manual") -> bool:
+    def auth_username(self) -> str:
         with self._lock:
+            return str(self._auth_config.get("username") or "admin")
+
+    def verify_login(self, username: str, password: str) -> bool:
+        with self._lock:
+            if username.strip() != str(self._auth_config.get("username")):
+                return False
+            return _verify_password(password, self._auth_config)
+
+    def set_credentials(self, username: str, password: str) -> None:
+        username = username.strip()
+        if not username:
+            raise ValueError("username required")
+        if len(username) > 64:
+            raise ValueError("username too long")
+        if len(password) < 1:
+            raise ValueError("password required")
+
+        overrides = _read_json_file(self._overrides_path)
+        salt_hex = secrets.token_bytes(16).hex()
+        iterations = 200_000
+        overrides["auth"] = {
+            "username": username,
+            "salt": salt_hex,
+            "iterations": iterations,
+            "password_hash": _pbkdf2_hash(password, salt_hex=salt_hex, iterations=iterations),
+        }
+        overrides["updated_at"] = _utc_now_iso()
+        _write_json_atomic(self._overrides_path, overrides)
+        self.reload_config()
+
+    def enqueue_run_once(self, *, source: str = "manual", repo: str | None = None) -> bool:
+        repo_key: str | None = None
+        if repo is not None:
+            if not isinstance(repo, str) or not repo.strip():
+                raise ValueError("repo must be a non-empty string")
+            repo_key = _repo_key_from_spec(repo)
+
+        with self._lock:
+            if repo_key is not None:
+                config = self._config
+                if config is None:
+                    raise RuntimeError("Config not loaded")
+                existing = set()
+                for repo_cfg in config.repos:
+                    try:
+                        existing.add(_repo_key_from_spec(repo_cfg.name))
+                    except Exception:
+                        existing.add(repo_cfg.name)
+                if repo_key not in existing:
+                    raise ValueError("unknown repo")
+
             if self._run_requested or self._run_in_progress:
                 return False
             self._run_requested = True
-            self._queue.put("run_once")
+            self._queue.put({"type": "run_once", "repo_key": repo_key})
             self._last_run = {
                 "id": self._run_id + 1,
                 "source": source,
+                "repo": repo_key,
                 "queued_at": _utc_now_iso(),
                 "started_at": None,
                 "finished_at": None,
@@ -359,6 +528,15 @@ class WatcherService:
     def update_settings(self, payload: dict[str, Any]) -> None:
         overrides = _read_json_file(self._overrides_path)
 
+        auth_patch = payload.get("auth", {}) if isinstance(payload.get("auth"), dict) else {}
+        if auth_patch:
+            username = auth_patch.get("username")
+            password = auth_patch.get("password")
+            if isinstance(username, str) and isinstance(password, str):
+                # Reuse set_credentials to validate & persist.
+                self.set_credentials(username, password)
+                overrides = _read_json_file(self._overrides_path)
+
         app_patch = payload.get("app", {}) if isinstance(payload.get("app"), dict) else {}
         if "keep_last" in app_patch:
             overrides.setdefault("app", {})["keep_last"] = _safe_int(app_patch["keep_last"], min_value=1, max_value=1000)
@@ -366,6 +544,62 @@ class WatcherService:
             overrides.setdefault("app", {})["interval_seconds"] = _safe_int(
                 app_patch["interval_seconds"], min_value=1, max_value=86_400
             )
+
+        storage_patch = payload.get("storage", {}) if isinstance(payload.get("storage"), dict) else {}
+        if storage_patch:
+            storage_store = overrides.setdefault("storage", {})
+            if not isinstance(storage_store, dict):
+                storage_store = {}
+                overrides["storage"] = storage_store
+
+            if "mode" in storage_patch:
+                storage_store["mode"] = _normalize_storage_mode(storage_patch.get("mode"))
+
+            if "local_dir" in storage_patch:
+                raw = storage_patch.get("local_dir")
+                if raw is None:
+                    storage_store.pop("local_dir", None)
+                elif isinstance(raw, str) and raw.strip():
+                    storage_store["local_dir"] = raw.strip()
+                else:
+                    raise ValueError("storage.local_dir must be a non-empty string or null")
+
+            webdav_patch = storage_patch.get("webdav", {}) if isinstance(storage_patch.get("webdav"), dict) else {}
+            if "webdav" in storage_patch:
+                webdav_store = storage_store.setdefault("webdav", {})
+                if not isinstance(webdav_store, dict):
+                    webdav_store = {}
+                    storage_store["webdav"] = webdav_store
+
+                if "base_url" in webdav_patch:
+                    webdav_store["base_url"] = str(webdav_patch.get("base_url") or "").strip()
+                if "username" in webdav_patch:
+                    raw_user = webdav_patch.get("username")
+                    webdav_store["username"] = str(raw_user).strip() if isinstance(raw_user, str) and raw_user.strip() else None
+                if "password" in webdav_patch:
+                    raw_pass = webdav_patch.get("password")
+                    if raw_pass is None:
+                        webdav_store.pop("password", None)
+                    elif isinstance(raw_pass, str):
+                        if raw_pass != "":
+                            webdav_store["password"] = raw_pass
+                    else:
+                        raise ValueError("webdav.password must be a string or null")
+                if "verify_tls" in webdav_patch:
+                    webdav_store["verify_tls"] = bool(webdav_patch.get("verify_tls", True))
+                if "timeout_seconds" in webdav_patch:
+                    webdav_store["timeout_seconds"] = _safe_int(
+                        webdav_patch.get("timeout_seconds"), min_value=5, max_value=600
+                    )
+
+            mode_effective = _normalize_storage_mode(storage_store.get("mode"))
+            if mode_effective == "webdav":
+                webdav_store = storage_store.get("webdav", {})
+                if not isinstance(webdav_store, dict):
+                    raise ValueError("storage.webdav must be an object")
+                base_url = str(webdav_store.get("base_url") or "").strip()
+                if not base_url:
+                    raise ValueError("webdav.base_url is required when storage.mode = 'webdav'")
 
         repos_patch = payload.get("repos", {}) if isinstance(payload.get("repos"), dict) else {}
         if repos_patch:
@@ -415,6 +649,8 @@ class WatcherService:
                 "started_at": self._started_at,
                 "config_path": str(self._config_path),
                 "overrides_path": str(self._overrides_path),
+                "log_file": str(self._log_file) if self._log_file else None,
+                "auth": {"username": str(self._auth_config.get("username") or "admin")},
                 "config_loaded": config is not None,
                 "config_error": self._config_error,
                 "last_config_reload_at": self._last_config_reload_at,
@@ -438,6 +674,47 @@ class WatcherService:
             state_path = config.state_file
         return load_state(state_path)
 
+    def test_webdav(self, patch: dict[str, Any] | None = None) -> None:
+        with self._lock:
+            config = self._config
+            if config is None:
+                raise RuntimeError("Config not loaded")
+            base = config.webdav
+
+        base_url = str(getattr(base, "base_url", "") or "")
+        username = getattr(base, "username", None)
+        password = getattr(base, "password", None)
+        verify_tls = bool(getattr(base, "verify_tls", True))
+        timeout_seconds = int(getattr(base, "timeout_seconds", 60) or 60)
+
+        if patch and isinstance(patch, dict):
+            if "base_url" in patch:
+                base_url = str(patch.get("base_url") or "").strip()
+            if "username" in patch:
+                raw_user = patch.get("username")
+                username = str(raw_user).strip() if isinstance(raw_user, str) and raw_user.strip() else None
+            if "password" in patch:
+                raw_pass = patch.get("password")
+                if isinstance(raw_pass, str) and raw_pass != "":
+                    password = raw_pass
+                if raw_pass is None:
+                    password = None
+            if "verify_tls" in patch:
+                verify_tls = bool(patch.get("verify_tls", True))
+            if "timeout_seconds" in patch:
+                timeout_seconds = _safe_int(patch.get("timeout_seconds"), min_value=5, max_value=600)
+
+        client = WebDAVClient(
+            WebDAVConfig(
+                base_url=base_url,
+                username=username,
+                password=password,
+                verify_tls=verify_tls,
+                timeout_seconds=timeout_seconds,
+            )
+        )
+        client.test_connection()
+
     def _worker_loop(self) -> None:
         while not self._stop_event.is_set():
             try:
@@ -445,10 +722,10 @@ class WatcherService:
             except queue.Empty:
                 continue
 
-            if task == "run_once":
-                self._do_run_once()
+            if task.get("type") == "run_once":
+                self._do_run_once(task.get("repo_key"))
 
-    def _do_run_once(self) -> None:
+    def _do_run_once(self, repo_key: str | None) -> None:
         with self._lock:
             self._run_requested = False
             if self._run_in_progress:
@@ -466,6 +743,18 @@ class WatcherService:
         try:
             if config_snapshot is None:
                 raise RuntimeError("Config not loaded")
+            if repo_key is not None:
+                filtered: list[RepoConfig] = []
+                for repo_cfg in config_snapshot.repos:
+                    try:
+                        key = _repo_key_from_spec(repo_cfg.name)
+                    except Exception:
+                        key = repo_cfg.name
+                    if key == repo_key:
+                        filtered.append(repo_cfg)
+                if not filtered:
+                    raise ValueError("unknown repo")
+                config_snapshot.repos = filtered
             exit_code = watcher_run_once(config_snapshot)
         except Exception as exc:
             error = str(exc)
@@ -500,10 +789,68 @@ class WatcherService:
 
 
 class _Server(ThreadingHTTPServer):
-    def __init__(self, server_address: tuple[str, int], handler_cls: type[BaseHTTPRequestHandler], *, app: WatcherService, ui: bool):
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        handler_cls: type[BaseHTTPRequestHandler],
+        *,
+        app: WatcherService,
+        ui: bool,
+        auth: "AuthService",
+    ):
         super().__init__(server_address, handler_cls)
         self.app = app
         self.ui = ui
+        self.auth = auth
+
+
+class AuthService:
+    def __init__(self, app: WatcherService, *, session_ttl_seconds: int = 12 * 60 * 60):
+        self._app = app
+        self._ttl = max(60, int(session_ttl_seconds))
+        self._lock = threading.Lock()
+        self._sessions: dict[str, float] = {}
+
+    def create_session(self, username: str) -> str:
+        token = secrets.token_urlsafe(32)
+        expires_at = time.time() + self._ttl
+        with self._lock:
+            self._sessions[token] = expires_at
+        return token
+
+    def delete_session(self, token: str | None) -> None:
+        if not token:
+            return
+        with self._lock:
+            self._sessions.pop(token, None)
+
+    def is_valid(self, token: str | None) -> bool:
+        if not token:
+            return False
+        now = time.time()
+        with self._lock:
+            expires_at = self._sessions.get(token)
+            if expires_at is None:
+                return False
+            if now >= expires_at:
+                self._sessions.pop(token, None)
+                return False
+        return True
+
+    def login(self, username: str, password: str) -> str | None:
+        if not self._app.verify_login(username, password):
+            return None
+        return self.create_session(username)
+
+    @staticmethod
+    def get_token_from_cookie(cookie_header: str | None) -> str | None:
+        if not cookie_header:
+            return None
+        parts = [p.strip() for p in cookie_header.split(";") if p.strip()]
+        for part in parts:
+            if part.startswith("grw_session="):
+                return part.split("=", 1)[1].strip() or None
+        return None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -574,6 +921,46 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "time": _utc_now_iso()})
             return
 
+        if path == "/api/v1/login" and self.command == "POST":
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            username = str(payload.get("username") or "")
+            password = str(payload.get("password") or "")
+            token = self.server.auth.login(username, password)
+            if token is None:
+                self._send_json({"error": "invalid_credentials"}, status=HTTPStatus.UNAUTHORIZED)
+                return
+
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Set-Cookie", f"grw_session={token}; Path=/; HttpOnly; SameSite=Lax")
+            body = json.dumps({"ok": True, "user": {"username": self.server.app.auth_username()}}, ensure_ascii=False).encode("utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/api/v1/logout" and self.command == "POST":
+            token = AuthService.get_token_from_cookie(self.headers.get("Cookie"))
+            self.server.auth.delete_session(token)
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Set-Cookie", "grw_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+            body = json.dumps({"ok": True}, ensure_ascii=False).encode("utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if not self._is_authenticated():
+            self._send_json({"error": "unauthorized"}, status=HTTPStatus.UNAUTHORIZED)
+            return
+
+        if path == "/api/v1/me" and self.command == "GET":
+            self._send_json({"user": {"username": self.server.app.auth_username()}})
+            return
+
         if path == "/api/v1/status" and self.command == "GET":
             payload = self.server.app.snapshot()
             self._send_json(payload)
@@ -593,8 +980,8 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     limit = 200
 
-            handler = _find_ring_log_handler()
-            self._send_json({"items": handler.snapshot(limit) if handler else []})
+            handler = _find_activity_handler()
+            self._send_json({"items": handler.snapshot(limit) if handler else [], "log_file": self.server.app.snapshot().get("log_file")})
             return
 
         if path == "/api/v1/state" and self.command == "GET":
@@ -606,8 +993,32 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"state": state})
             return
 
+        if path == "/api/v1/storage/test" and self.command == "POST":
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            webdav_patch = payload.get("webdav") if isinstance(payload.get("webdav"), dict) else payload
+            try:
+                self.server.app.test_webdav(webdav_patch if isinstance(webdav_patch, dict) else None)
+            except (WebDAVError, ValueError, RuntimeError) as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            self._send_json({"ok": True})
+            return
+
         if path == "/api/v1/run" and self.command == "POST":
-            queued = self.server.app.enqueue_run_once(source="api")
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            repo = payload.get("repo")
+            try:
+                queued = self.server.app.enqueue_run_once(source="api", repo=repo if repo is not None else None)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
             self._send_json({"queued": queued, "status": self.server.app.snapshot()["run"]["last"]})
             return
 
@@ -638,6 +1049,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self._send_json({"error": "not_found"}, status=HTTPStatus.NOT_FOUND)
+
+    def _is_authenticated(self) -> bool:
+        token = AuthService.get_token_from_cookie(self.headers.get("Cookie"))
+        return self.server.auth.is_valid(token)
 
     def _read_json_body(self) -> dict[str, Any] | None:
         length = self.headers.get("Content-Length")
@@ -709,10 +1124,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
-def _find_ring_log_handler() -> RingLogBuffer | None:
+def _find_activity_handler() -> ActivityBuffer | None:
     root = logging.getLogger()
     for h in root.handlers:
-        if isinstance(h, RingLogBuffer):
+        if isinstance(h, ActivityBuffer):
             return h
     return None
 
@@ -720,6 +1135,7 @@ def _find_ring_log_handler() -> RingLogBuffer | None:
 def serve(
     *,
     config_path: Path,
+    log_file: Path | None = None,
     host: str = "127.0.0.1",
     port: int = 8000,
     ui: bool = True,
@@ -727,13 +1143,14 @@ def serve(
     run_immediately: bool = True,
 ) -> int:
     root_logger = logging.getLogger()
-    if not any(isinstance(h, RingLogBuffer) for h in root_logger.handlers):
-        root_logger.addHandler(RingLogBuffer(capacity=800))
+    if not any(isinstance(h, ActivityBuffer) for h in root_logger.handlers):
+        root_logger.addHandler(ActivityBuffer(capacity=600))
 
-    app = WatcherService(config_path)
+    app = WatcherService(config_path, log_file=log_file)
     app.start(scheduler_enabled=scheduler_enabled, run_immediately=run_immediately)
 
-    server = _Server((host, int(port)), Handler, app=app, ui=ui)
+    auth = AuthService(app)
+    server = _Server((host, int(port)), Handler, app=app, ui=ui, auth=auth)
     logging.info("Web server listening on http://%s:%s (ui=%s)", host, port, ui)
     try:
         server.serve_forever(poll_interval=0.5)

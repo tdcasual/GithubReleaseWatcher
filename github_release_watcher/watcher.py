@@ -4,14 +4,18 @@ import json
 import logging
 import re
 import shutil
+from contextlib import suppress
 import time
 from pathlib import Path
 from typing import Iterable
 
 from .config import AppConfig, RepoConfig
-from .downloader import DownloadError, FetchDownloader
-from .github import GitHubApiError, GitHubClient, Release, parse_repo_spec
+from .downloader import DownloadError, GitHubReleaseAssetDownloader
+from .github import Asset, GitHubApiError, GitHubClient, Release, parse_repo_spec
 from .state import get_repo_state, load_state, mark_release_processed, remove_release_state, save_state
+from .webdav import WebDAVClient, WebDAVError
+
+activity_logger = logging.getLogger("github_release_watcher.activity")
 
 
 def watch_loop(config: AppConfig) -> int:
@@ -29,7 +33,16 @@ def watch_loop(config: AppConfig) -> int:
 def run_once(config: AppConfig) -> int:
     state = load_state(config.state_file)
     github = GitHubClient(api_base=config.github.api_base, token=config.github.token)
-    downloader = FetchDownloader(fetch_path=config.fetch_path, github_token=config.github.token)
+    downloader = GitHubReleaseAssetDownloader(github_token=config.github.token)
+
+    storage_mode = str(getattr(config, "storage_mode", "local") or "local").strip().lower()
+    webdav: WebDAVClient | None = None
+    if storage_mode == "webdav":
+        try:
+            webdav = WebDAVClient(config.webdav)
+        except Exception as exc:
+            logging.error("Invalid WebDAV config: %s", exc)
+            return 1
 
     had_errors = False
     for repo_cfg in config.repos:
@@ -37,7 +50,7 @@ def run_once(config: AppConfig) -> int:
             logging.info("Skipping disabled repo: %s", repo_cfg.name)
             continue
         try:
-            ok = _process_repo(config, repo_cfg, github, downloader, state)
+            ok = _process_repo(config, repo_cfg, github, downloader, state, webdav=webdav)
             had_errors = had_errors or not ok
         except Exception:
             logging.exception("Failed processing repo %s", repo_cfg.name)
@@ -55,8 +68,10 @@ def _process_repo(
     config: AppConfig,
     repo_cfg: RepoConfig,
     github: GitHubClient,
-    downloader: FetchDownloader,
+    downloader: GitHubReleaseAssetDownloader,
     state: dict,
+    *,
+    webdav: WebDAVClient | None,
 ) -> bool:
     owner, repo, repo_https_url = parse_repo_spec(repo_cfg.name)
     repo_key = f"{owner}/{repo}"
@@ -71,17 +86,59 @@ def _process_repo(
     wanted = releases[:keep_last]
     wanted_tags = [r.tag_name for r in wanted if r.tag_name]
 
-    repo_dir = config.download_dir / owner / repo
-    repo_dir.mkdir(parents=True, exist_ok=True)
-
     repo_state = get_repo_state(state, repo_key)
 
     ok = True
-    for release in reversed(wanted):
-        ok = _ensure_release_downloaded(repo_key, repo_https_url, repo_dir, repo_cfg, release, downloader, repo_state) and ok
+    if webdav is None:
+        repo_dir = config.download_dir / owner / repo
+        repo_dir.mkdir(parents=True, exist_ok=True)
 
-    _cleanup_old_releases(repo_key, repo_dir, wanted_tags, repo_state)
+        for release in reversed(wanted):
+            ok = (
+                _ensure_release_downloaded_local(
+                    repo_key, repo_https_url, repo_dir, repo_cfg, release, downloader, repo_state
+                )
+                and ok
+            )
+
+        _cleanup_old_releases_local(repo_key, repo_dir, wanted_tags, repo_state)
+        return ok
+
+    cache_root = config.download_dir / ".webdav_cache"
+    cache_repo_dir = cache_root / owner / repo
+    cache_repo_dir.mkdir(parents=True, exist_ok=True)
+
+    for release in reversed(wanted):
+        ok = (
+            _ensure_release_downloaded_webdav(
+                repo_key,
+                owner,
+                repo,
+                repo_https_url,
+                cache_repo_dir,
+                repo_cfg,
+                release,
+                downloader,
+                webdav,
+                repo_state,
+            )
+            and ok
+        )
+
+    _cleanup_old_releases_webdav(repo_key, owner, repo, webdav, wanted_tags, repo_state)
     return ok
+
+def _release_metadata_bytes(release: Release) -> bytes:
+    payload = {
+        "tag_name": release.tag_name,
+        "draft": release.draft,
+        "prerelease": release.prerelease,
+        "created_at": release.created_at.isoformat() if release.created_at else None,
+        "published_at": release.published_at.isoformat() if release.published_at else None,
+        "html_url": release.html_url,
+        "assets": [{"name": a.name, "size": a.size, "browser_download_url": a.browser_download_url} for a in release.assets],
+    }
+    return (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
 def _get_recent_releases(
@@ -142,12 +199,12 @@ def _compile_patterns(patterns: Iterable[str]) -> list[re.Pattern[str]]:
     return compiled
 
 
-def _select_assets(release: Release, repo_cfg: RepoConfig) -> list[str]:
+def _select_assets(release: Release, repo_cfg: RepoConfig) -> list[Asset]:
     include = _compile_patterns(repo_cfg.include_assets)
     exclude = _compile_patterns(repo_cfg.exclude_assets)
     asset_types = [t.strip().lower().lstrip(".") for t in getattr(repo_cfg, "asset_types", []) if t and t.strip()]
 
-    selected: list[str] = []
+    selected: list[Asset] = []
     for asset in release.assets:
         name = asset.name
         if not _is_safe_filename(name):
@@ -162,24 +219,38 @@ def _select_assets(release: Release, repo_cfg: RepoConfig) -> list[str]:
             continue
         if exclude and any(p.search(name) for p in exclude):
             continue
-        selected.append(name)
+        selected.append(asset)
     return selected
 
 
-def _ensure_release_downloaded(
+def _is_asset_valid(asset: Asset, dest_file: Path) -> bool:
+    if not dest_file.exists():
+        return False
+    try:
+        size = int(dest_file.stat().st_size)
+    except Exception:
+        return False
+    if asset.size is None:
+        return size > 0
+    if asset.size <= 0:
+        return size > 0
+    return size == int(asset.size)
+
+
+def _ensure_release_downloaded_local(
     repo_key: str,
     repo_https_url: str,
     repo_dir: Path,
     repo_cfg: RepoConfig,
     release: Release,
-    downloader: FetchDownloader,
+    downloader: GitHubReleaseAssetDownloader,
     repo_state: dict,
 ) -> bool:
     tag = release.tag_name
     tag_dir = repo_dir / _sanitize_path_component(tag)
     tag_dir.mkdir(parents=True, exist_ok=True)
 
-    _write_release_metadata(tag_dir, release)
+    _write_release_metadata_local(tag_dir, release)
 
     selected_assets = _select_assets(release, repo_cfg)
     if not selected_assets:
@@ -192,42 +263,171 @@ def _ensure_release_downloaded(
     downloaded_assets = set(existing_state.get("downloaded_assets", []) or [])
 
     ok = True
-    for asset_name in selected_assets:
-        dest_file = tag_dir / asset_name
-        if dest_file.exists() and dest_file.stat().st_size > 0:
-            downloaded_assets.add(asset_name)
+    for asset in selected_assets:
+        dest_file = tag_dir / asset.name
+        if _is_asset_valid(asset, dest_file):
+            downloaded_assets.add(asset.name)
             continue
+        if dest_file.exists():
+            logging.warning(
+                "[%s:%s] Existing file size mismatch; re-downloading: %s",
+                repo_key,
+                tag,
+                asset.name,
+            )
 
-        logging.info("[%s:%s] Downloading asset: %s", repo_key, tag, asset_name)
+        logging.info("[%s:%s] Downloading asset: %s", repo_key, tag, asset.name)
         try:
-            downloader.download_release_asset(repo_https_url, tag, asset_name, tag_dir)
+            downloader.download_release_asset(repo_https_url, tag, asset, tag_dir)
         except DownloadError as exc:
-            logging.error("[%s:%s] Download failed for %s: %s", repo_key, tag, asset_name, exc)
+            logging.error("[%s:%s] Download failed for %s: %s", repo_key, tag, asset.name, exc)
+            activity_logger.warning(
+                "%s %s 下载失败：%s",
+                repo_key,
+                tag,
+                asset.name,
+                extra={
+                    "event_type": "download_error",
+                    "repo": repo_key,
+                    "tag": tag,
+                    "path": str(tag_dir),
+                },
+            )
             ok = False
             continue
 
-        if dest_file.exists() and dest_file.stat().st_size > 0:
-            downloaded_assets.add(asset_name)
+        if _is_asset_valid(asset, dest_file):
+            downloaded_assets.add(asset.name)
+            activity_logger.info(
+                "%s %s 下载：%s → %s",
+                repo_key,
+                tag,
+                asset.name,
+                str(tag_dir),
+                extra={
+                    "event_type": "download",
+                    "repo": repo_key,
+                    "tag": tag,
+                    "path": str(tag_dir),
+                },
+            )
 
     mark_release_processed(repo_state, tag, sorted(downloaded_assets))
     return ok
 
 
-def _write_release_metadata(tag_dir: Path, release: Release) -> None:
+def _write_release_metadata_local(tag_dir: Path, release: Release) -> None:
     meta_path = tag_dir / "release.json"
-    payload = {
-        "tag_name": release.tag_name,
-        "draft": release.draft,
-        "prerelease": release.prerelease,
-        "created_at": release.created_at.isoformat() if release.created_at else None,
-        "published_at": release.published_at.isoformat() if release.published_at else None,
-        "html_url": release.html_url,
-        "assets": [{"name": a.name, "size": a.size, "browser_download_url": a.browser_download_url} for a in release.assets],
-    }
-    meta_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    meta_path.write_bytes(_release_metadata_bytes(release))
 
 
-def _cleanup_old_releases(repo_key: str, repo_dir: Path, keep_tags: list[str], repo_state: dict) -> None:
+def _ensure_release_downloaded_webdav(
+    repo_key: str,
+    owner: str,
+    repo: str,
+    repo_https_url: str,
+    cache_repo_dir: Path,
+    repo_cfg: RepoConfig,
+    release: Release,
+    downloader: GitHubReleaseAssetDownloader,
+    webdav: WebDAVClient,
+    repo_state: dict,
+) -> bool:
+    tag = release.tag_name
+    tag_dir_name = _sanitize_path_component(tag)
+    remote_tag_dir = f"{owner}/{repo}/{tag_dir_name}"
+
+    try:
+        webdav.ensure_dir(remote_tag_dir)
+        webdav.put_bytes(f"{remote_tag_dir}/release.json", _release_metadata_bytes(release), content_type="application/json")
+    except WebDAVError as exc:
+        logging.error("[%s:%s] WebDAV metadata upload failed: %s", repo_key, tag, exc)
+        activity_logger.warning(
+            "%s %s 上传元数据失败",
+            repo_key,
+            tag,
+            extra={"event_type": "download_error", "repo": repo_key, "tag": tag, "path": remote_tag_dir},
+        )
+        return False
+
+    selected_assets = _select_assets(release, repo_cfg)
+    if not selected_assets:
+        logging.info("[%s:%s] No assets matched rules; marking as processed.", repo_key, tag)
+        existing_state = repo_state.get("releases", {}).get(tag, {}) if isinstance(repo_state.get("releases"), dict) else {}
+        mark_release_processed(repo_state, tag, list(existing_state.get("downloaded_assets", []) or []))
+        return True
+
+    existing_state = repo_state.get("releases", {}).get(tag, {}) if isinstance(repo_state.get("releases"), dict) else {}
+    downloaded_assets = set(existing_state.get("downloaded_assets", []) or [])
+
+    ok = True
+    cache_tag_dir = cache_repo_dir / tag_dir_name
+    cache_tag_dir.mkdir(parents=True, exist_ok=True)
+
+    for asset in selected_assets:
+        remote_path = f"{remote_tag_dir}/{asset.name}"
+        try:
+            exists, remote_size = webdav.stat_file(remote_path)
+            if exists and asset.size is not None and remote_size is not None and int(remote_size) == int(asset.size):
+                downloaded_assets.add(asset.name)
+                continue
+        except WebDAVError:
+            # If we cannot stat, fall back to upload.
+            pass
+
+        logging.info("[%s:%s] Downloading asset for WebDAV: %s", repo_key, tag, asset.name)
+        try:
+            result = downloader.download_release_asset(repo_https_url, tag, asset, cache_tag_dir)
+        except DownloadError as exc:
+            logging.error("[%s:%s] Download failed for %s: %s", repo_key, tag, asset.name, exc)
+            activity_logger.warning(
+                "%s %s 下载失败：%s",
+                repo_key,
+                tag,
+                asset.name,
+                extra={"event_type": "download_error", "repo": repo_key, "tag": tag, "path": remote_tag_dir},
+            )
+            ok = False
+            continue
+
+        try:
+            webdav.put_file(remote_path, result.path, content_type="application/octet-stream")
+            exists, remote_size = webdav.stat_file(remote_path)
+            if asset.size is not None and remote_size is not None and int(remote_size) != int(asset.size):
+                raise WebDAVError(f"remote size mismatch: expected {asset.size}, got {remote_size}")
+        except WebDAVError as exc:
+            logging.error("[%s:%s] WebDAV upload failed for %s: %s", repo_key, tag, asset.name, exc)
+            activity_logger.warning(
+                "%s %s 上传失败：%s",
+                repo_key,
+                tag,
+                asset.name,
+                extra={"event_type": "download_error", "repo": repo_key, "tag": tag, "path": remote_tag_dir},
+            )
+            ok = False
+            continue
+        finally:
+            with suppress(FileNotFoundError):
+                result.path.unlink()
+
+        downloaded_assets.add(asset.name)
+        activity_logger.info(
+            "%s %s 下载：%s → %s",
+            repo_key,
+            tag,
+            asset.name,
+            f"webdav:{remote_tag_dir}",
+            extra={"event_type": "download", "repo": repo_key, "tag": tag, "path": f"webdav:{remote_tag_dir}"},
+        )
+
+    mark_release_processed(repo_state, tag, sorted(downloaded_assets))
+    with suppress(Exception):
+        if cache_tag_dir.exists() and not any(cache_tag_dir.iterdir()):
+            cache_tag_dir.rmdir()
+    return ok
+
+
+def _cleanup_old_releases_local(repo_key: str, repo_dir: Path, keep_tags: list[str], repo_state: dict) -> None:
     keep_dir_names = {_sanitize_path_component(t) for t in keep_tags}
 
     for child in repo_dir.iterdir():
@@ -240,6 +440,18 @@ def _cleanup_old_releases(repo_key: str, repo_dir: Path, keep_tags: list[str], r
 
         logging.info("[%s] Removing old release directory: %s", repo_key, child)
         shutil.rmtree(child, ignore_errors=True)
+        activity_logger.info(
+            "%s 删除旧版本：%s → %s",
+            repo_key,
+            child.name,
+            str(child),
+            extra={
+                "event_type": "cleanup",
+                "repo": repo_key,
+                "tag": child.name,
+                "path": str(child),
+            },
+        )
 
     keep_tag_set = set(keep_tags)
     releases_state = repo_state.get("releases", {})
@@ -247,3 +459,53 @@ def _cleanup_old_releases(repo_key: str, repo_dir: Path, keep_tags: list[str], r
         for tag in list(releases_state.keys()):
             if tag not in keep_tag_set:
                 remove_release_state(repo_state, tag)
+
+
+def _cleanup_old_releases_webdav(
+    repo_key: str,
+    owner: str,
+    repo: str,
+    webdav: WebDAVClient,
+    keep_tags: list[str],
+    repo_state: dict,
+) -> None:
+    keep_tag_set = set(keep_tags)
+    releases_state = repo_state.get("releases", {})
+    if not isinstance(releases_state, dict):
+        return
+
+    for tag in list(releases_state.keys()):
+        if tag in keep_tag_set:
+            continue
+
+        tag_dir_name = _sanitize_path_component(tag)
+        remote_tag_dir = f"{owner}/{repo}/{tag_dir_name}"
+        entry = releases_state.get(tag, {}) if isinstance(releases_state.get(tag), dict) else {}
+        downloaded = entry.get("downloaded_assets", []) if isinstance(entry.get("downloaded_assets"), list) else []
+
+        ok = True
+        for name in downloaded:
+            try:
+                webdav.delete(f"{remote_tag_dir}/{name}", is_dir=False)
+            except WebDAVError:
+                ok = False
+
+        try:
+            webdav.delete(f"{remote_tag_dir}/release.json", is_dir=False)
+        except WebDAVError:
+            ok = False
+
+        try:
+            webdav.delete(remote_tag_dir, is_dir=True)
+        except WebDAVError:
+            ok = False
+
+        if ok:
+            activity_logger.info(
+                "%s 删除旧版本：%s → %s",
+                repo_key,
+                tag,
+                f"webdav:{remote_tag_dir}",
+                extra={"event_type": "cleanup", "repo": repo_key, "tag": tag, "path": f"webdav:{remote_tag_dir}"},
+            )
+            remove_release_state(repo_state, tag)

@@ -24,9 +24,11 @@ def _parse_iso8601(value: str | None) -> datetime | None:
 
 @dataclass(frozen=True)
 class Asset:
+    id: int | None
     name: str
     size: int | None
     browser_download_url: str
+    api_url: str | None
 
 
 @dataclass(frozen=True)
@@ -161,11 +163,21 @@ def _parse_release(item: Any) -> Release:
         for a in assets_payload:
             if not isinstance(a, dict):
                 continue
+            asset_id = a.get("id")
             name = a.get("name")
             url = a.get("browser_download_url")
+            api_url = a.get("url")
             if isinstance(name, str) and isinstance(url, str):
                 size = a.get("size")
-                assets.append(Asset(name=name, size=int(size) if isinstance(size, int) else None, browser_download_url=url))
+                assets.append(
+                    Asset(
+                        id=int(asset_id) if isinstance(asset_id, int) else None,
+                        name=name,
+                        size=int(size) if isinstance(size, int) else None,
+                        browser_download_url=url,
+                        api_url=str(api_url) if isinstance(api_url, str) else None,
+                    )
+                )
 
     return Release(
         tag_name=str(item.get("tag_name") or ""),

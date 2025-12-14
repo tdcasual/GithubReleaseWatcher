@@ -19,6 +19,15 @@ class GitHubConfig:
 
 
 @dataclass
+class WebDAVConfig:
+    base_url: str = ""
+    username: str | None = None
+    password: str | None = None
+    verify_tls: bool = True
+    timeout_seconds: int = 60
+
+
+@dataclass
 class RepoConfig:
     name: str
     enabled: bool = True
@@ -36,8 +45,9 @@ class AppConfig:
     download_dir: Path = Path("./downloads")
     state_file: Path = Path("./state.json")
     keep_last: int = 5
-    fetch_path: str = "fetch"
     github: GitHubConfig = field(default_factory=GitHubConfig)
+    storage_mode: str = "local"  # local | webdav
+    webdav: WebDAVConfig = field(default_factory=WebDAVConfig)
     repos: list[RepoConfig] = field(default_factory=list)
 
 
@@ -114,8 +124,6 @@ def load_config(path: Path) -> AppConfig:
         config.state_file = _as_path(base_dir, config.state_file, "state_file")
     if "keep_last" in data:
         config.keep_last = int(data["keep_last"])
-    if "fetch_path" in data:
-        config.fetch_path = str(data["fetch_path"])
 
     github = data.get("github", {}) or {}
     if not isinstance(github, dict):
@@ -177,12 +185,38 @@ def load_config(path: Path) -> AppConfig:
 
     config.repos = parsed_repos
 
+    storage = data.get("storage", {}) or {}
+    if storage is not None and not isinstance(storage, dict):
+        raise ConfigError("[storage] must be a table")
+    if isinstance(storage, dict) and "mode" in storage:
+        mode = str(storage.get("mode") or "").strip().lower()
+        if mode not in ("local", "webdav"):
+            raise ConfigError("storage.mode must be 'local' or 'webdav'")
+        config.storage_mode = mode
+
+    webdav = storage.get("webdav", {}) if isinstance(storage, dict) else {}
+    if webdav is not None and not isinstance(webdav, dict):
+        raise ConfigError("[storage.webdav] must be a table")
+    if isinstance(webdav, dict):
+        if "base_url" in webdav:
+            config.webdav.base_url = str(webdav.get("base_url") or "").strip()
+        if "username" in webdav:
+            raw = webdav.get("username")
+            config.webdav.username = str(raw).strip() if isinstance(raw, str) and raw.strip() else None
+        if "password" in webdav:
+            raw = webdav.get("password")
+            config.webdav.password = str(raw) if isinstance(raw, str) else None
+        if "verify_tls" in webdav:
+            config.webdav.verify_tls = bool(webdav.get("verify_tls", True))
+        if "timeout_seconds" in webdav:
+            config.webdav.timeout_seconds = int(webdav.get("timeout_seconds") or 60)
+
     if config.interval_seconds <= 0:
         raise ConfigError("interval_seconds must be > 0")
     if config.keep_last <= 0:
         raise ConfigError("keep_last must be > 0")
-    if not config.fetch_path:
-        raise ConfigError("fetch_path must be non-empty")
+    if config.storage_mode == "webdav" and not str(config.webdav.base_url or "").strip():
+        raise ConfigError("storage.webdav.base_url is required when storage.mode = 'webdav'")
 
     for idx, repo_cfg in enumerate(config.repos):
         if repo_cfg.keep_last is not None and repo_cfg.keep_last <= 0:

@@ -1,7 +1,7 @@
 [project]
 name = "github-release-watcher"
 version = "0.1.0"
-description = "GitHub Release 监控与自动备份工具（基于 gruntwork-io/fetch 下载）"
+description = "GitHub Release 监控与自动备份工具（纯 Python 下载）"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = ["requests>=2.31.0"]

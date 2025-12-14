@@ -1,23 +1,44 @@
+class UnauthorizedError extends Error {
+  constructor() {
+    super("unauthorized");
+    this.code = "unauthorized";
+  }
+}
+
 const API = {
+  async request(path, options) {
+    const mergedHeaders = { Accept: "application/json", ...(options?.headers ?? {}) };
+    const { headers: _ignored, ...rest } = options ?? {};
+    const res = await fetch(`/api/v1${path}`, {
+      credentials: "same-origin",
+      ...rest,
+      headers: mergedHeaders,
+    });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+    if (res.status === 401 || data?.error === "unauthorized") throw new UnauthorizedError();
+    return data;
+  },
   async get(path) {
-    const res = await fetch(`/api/v1${path}`, { headers: { Accept: "application/json" } });
-    return await res.json();
+    return await API.request(path, { method: "GET" });
   },
   async post(path, body) {
-    const res = await fetch(`/api/v1${path}`, {
+    return await API.request(path, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body ?? {}),
     });
-    return await res.json();
   },
   async put(path, body) {
-    const res = await fetch(`/api/v1${path}`, {
+    return await API.request(path, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body ?? {}),
     });
-    return await res.json();
   },
 };
 
@@ -34,6 +55,8 @@ const PRESET_TYPES = [
 let config = null;
 let draft = null;
 let dirty = false;
+let currentUser = null;
+let loginPromise = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -56,6 +79,12 @@ function buildBadge(text, cls) {
   const el = $("statusBadge");
   el.textContent = text;
   el.className = `badge ${cls ?? ""}`.trim();
+}
+
+function setUser(username) {
+  currentUser = username || null;
+  $("userBadge").textContent = currentUser ? currentUser : "未登录";
+  $("logoutBtn").disabled = !currentUser;
 }
 
 function cloneDeep(obj) {
@@ -111,6 +140,26 @@ function renderRepos() {
     nameBox.appendChild(sub);
     title.appendChild(nameBox);
 
+    const right = document.createElement("div");
+    right.className = "inline";
+    right.style.gap = "10px";
+
+    const runBtn = document.createElement("button");
+    runBtn.className = "btn";
+    runBtn.type = "button";
+    runBtn.textContent = "下载";
+    runBtn.disabled = !repo.enabled;
+    runBtn.addEventListener("click", async () => {
+      try {
+        const res = await API.post("/run", { repo: repo.key });
+        if (res.error) alert(`触发失败：${res.error}`);
+      } catch (e) {
+        if (e?.code === "unauthorized") await requireLogin();
+        else alert(String(e?.message || e));
+      }
+      await refreshStatusSafe();
+    });
+
     const enabledWrap = document.createElement("div");
     enabledWrap.className = "inline";
     const enabledLabel = document.createElement("span");
@@ -123,6 +172,7 @@ function renderRepos() {
     enabled.checked = !!repo.enabled;
     enabled.addEventListener("change", () => {
       repoDraft(repo.key).enabled = enabled.checked;
+      runBtn.disabled = !enabled.checked;
       setDirty(true);
     });
     const slider = document.createElement("span");
@@ -133,7 +183,9 @@ function renderRepos() {
     enabledWrap.appendChild(sw);
 
     head.appendChild(title);
-    head.appendChild(enabledWrap);
+    right.appendChild(runBtn);
+    right.appendChild(enabledWrap);
+    head.appendChild(right);
     row.appendChild(head);
 
     const controls = document.createElement("div");
@@ -193,9 +245,18 @@ function renderRepos() {
 }
 
 function materializeDraftFromConfig() {
-  draft = { app: {}, repos: {} };
+  draft = { app: {}, repos: {}, storage: {} };
   draft.app.keep_last = config.app.keep_last;
   draft.app.interval_seconds = config.app.interval_seconds;
+  const storage = config.storage || {};
+  draft.storage.mode = storage.mode || "local";
+  draft.storage.local_dir = storage.local_dir || config.app.download_dir;
+  draft.storage.webdav = {
+    base_url: storage.webdav?.base_url || "",
+    username: storage.webdav?.username || "",
+    verify_tls: storage.webdav?.verify_tls ?? true,
+    timeout_seconds: storage.webdav?.timeout_seconds ?? 60,
+  };
   for (const repo of config.repos) {
     draft.repos[repo.key] = {
       name: repo.name,
@@ -210,6 +271,32 @@ function materializeDraftFromConfig() {
   }
 }
 
+function syncSettingsFormFromDraft() {
+  const mode = draft?.storage?.mode || "local";
+  $("storageModeLocal").checked = mode === "local";
+  $("storageModeWebdav").checked = mode === "webdav";
+
+  $("localDirInput").value = draft?.storage?.local_dir || "";
+  $("webdavBaseUrl").value = draft?.storage?.webdav?.base_url || "";
+  $("webdavUsername").value = draft?.storage?.webdav?.username || "";
+  $("webdavTimeout").value = String(draft?.storage?.webdav?.timeout_seconds ?? 60);
+  $("webdavVerifyTls").checked = !!(draft?.storage?.webdav?.verify_tls ?? true);
+
+  const fields = $("webdavFields");
+  fields.classList.toggle("hidden", mode !== "webdav");
+}
+
+function syncDraftFromSettingsForm() {
+  const mode = $("storageModeWebdav").checked ? "webdav" : "local";
+  draft.storage.mode = mode;
+  draft.storage.local_dir = $("localDirInput").value.trim() || draft.storage.local_dir;
+  draft.storage.webdav.base_url = $("webdavBaseUrl").value.trim();
+  draft.storage.webdav.username = $("webdavUsername").value.trim();
+  draft.storage.webdav.verify_tls = $("webdavVerifyTls").checked;
+  draft.storage.webdav.timeout_seconds = Number($("webdavTimeout").value.trim() || 60);
+  $("webdavFields").classList.toggle("hidden", mode !== "webdav");
+}
+
 async function loadAll() {
   const status = await API.get("/status");
   config = status.config;
@@ -218,13 +305,19 @@ async function loadAll() {
     $("configHint").textContent = status.config_error ? `配置错误：${status.config_error}` : "配置未加载。";
     return;
   }
+  $("settingsBtn").disabled = false;
   $("configHint").textContent = `配置文件：${status.config_path}（覆盖文件：${status.overrides_path}）`;
+  if (status.auth?.username) {
+    setUser(status.auth.username);
+    $("authUsername").value = status.auth.username;
+  }
 
   materializeDraftFromConfig();
   setDirty(false);
 
   $("keepLastInput").value = String(config.app.keep_last);
   $("intervalInput").value = String(Math.max(1, Math.round(config.app.interval_seconds / 60)));
+  syncSettingsFormFromDraft();
 
   renderRepos();
   await refreshStatus();
@@ -246,26 +339,59 @@ async function refreshStatus() {
   $("lastRunAt").textContent = finishedAt ? `${isoToLocal(finishedAt)} ${suffix}` : "-";
 }
 
+async function refreshStatusSafe() {
+  try {
+    await refreshStatus();
+  } catch (e) {
+    if (e?.code === "unauthorized") await requireLogin();
+    else throw e;
+  }
+}
+
 async function refreshLogs() {
   const data = await API.get("/logs?limit=200");
   const items = data.items || [];
-  const lines = items.map((x) => `${isoToLocal(x.time)} ${x.level} ${x.message}`);
-  $("logs").textContent = lines.join("\n") || "暂无日志。";
+  const lines = items.map((x) => `${isoToLocal(x.time)} ${x.message}`);
+  $("logs").textContent = lines.join("\n") || "暂无活动。";
+
+  const hint = $("logFileHint");
+  if (hint) {
+    hint.textContent = data.log_file ? `日志文件：${data.log_file}` : "";
+  }
 }
 
 async function runNow() {
   await API.post("/run", {});
-  await refreshStatus();
+  await refreshStatusSafe();
 }
 
 async function saveSettings() {
+  syncDraftFromSettingsForm();
   draft.app.keep_last = Number($("keepLastInput").value.trim() || 1);
   draft.app.interval_seconds = Number($("intervalInput").value.trim() || 10) * 60;
-  const res = await API.put("/settings", draft);
+
+  const payload = cloneDeep(draft);
+  const webdavPassword = $("webdavPassword").value || "";
+  if (webdavPassword) {
+    payload.storage = payload.storage || {};
+    payload.storage.webdav = payload.storage.webdav || {};
+    payload.storage.webdav.password = webdavPassword;
+  }
+
+  const newUsername = ($("authUsername").value || "").trim();
+  const newPassword = $("authPassword").value || "";
+  if (newPassword) {
+    payload.auth = { username: newUsername, password: newPassword };
+  }
+
+  const res = await API.put("/settings", payload);
   if (res.error) {
     alert(`保存失败：${res.error}`);
     return;
   }
+  $("webdavPassword").value = "";
+  $("authPassword").value = "";
+  $("settingsHint").textContent = "";
   await loadAll();
 }
 
@@ -319,6 +445,23 @@ function copyLogs() {
 
 function wireEvents() {
   $("runNowBtn").addEventListener("click", runNow);
+  $("settingsBtn").addEventListener("click", () => {
+    if (!draft) {
+      alert("配置未加载。");
+      return;
+    }
+    $("settingsHint").textContent = "";
+    syncSettingsFormFromDraft();
+    $("settingsDialog").showModal();
+  });
+  $("logoutBtn").addEventListener("click", async () => {
+    try {
+      await API.post("/logout", {});
+    } catch {}
+    setUser(null);
+    await requireLogin();
+    await loadAll();
+  });
   $("reloadBtn").addEventListener("click", async () => {
     await API.post("/reload", {});
     await loadAll();
@@ -329,18 +472,139 @@ function wireEvents() {
   $("intervalInput").addEventListener("input", () => setDirty(true));
   $("addRepoBtn").addEventListener("click", openRepoDialog);
   $("copyLogsBtn").addEventListener("click", copyLogs);
+
+  const settingsForm = $("settingsDialog").querySelector("form");
+  settingsForm?.addEventListener("submit", (e) => e.preventDefault());
+  for (const id of [
+    "storageModeLocal",
+    "storageModeWebdav",
+    "localDirInput",
+    "webdavBaseUrl",
+    "webdavUsername",
+    "webdavTimeout",
+    "webdavVerifyTls",
+    "authUsername",
+    "authPassword",
+  ]) {
+    $(id).addEventListener("input", () => setDirty(true));
+    $(id).addEventListener("change", () => setDirty(true));
+  }
+  $("storageModeLocal").addEventListener("change", syncDraftFromSettingsForm);
+  $("storageModeWebdav").addEventListener("change", syncDraftFromSettingsForm);
+
+  $("testWebdavBtn").addEventListener("click", async () => {
+    $("settingsHint").textContent = "";
+    const patch = {
+      base_url: $("webdavBaseUrl").value.trim(),
+      username: $("webdavUsername").value.trim(),
+      password: $("webdavPassword").value || "",
+      verify_tls: $("webdavVerifyTls").checked,
+      timeout_seconds: Number($("webdavTimeout").value.trim() || 60),
+    };
+    try {
+      const res = await API.post("/storage/test", { webdav: patch });
+      $("settingsHint").textContent = res.ok ? "WebDAV 连接正常。" : `WebDAV 测试失败：${res.error || ""}`;
+    } catch (e) {
+      if (e?.code === "unauthorized") await requireLogin();
+      else $("settingsHint").textContent = `WebDAV 测试失败：${String(e?.message || e)}`;
+    }
+  });
+
+  $("saveSettingsBtn").addEventListener("click", async () => {
+    await saveSettings();
+    try {
+      $("settingsDialog").close();
+    } catch {}
+  });
+}
+
+function startLoginFlow(message) {
+  if (loginPromise) return loginPromise;
+  loginPromise = new Promise((resolve) => {
+    const dlg = $("loginDialog");
+    $("loginError").textContent = message || "";
+    $("loginUsername").value = "";
+    $("loginPassword").value = "";
+    dlg.showModal();
+    setTimeout(() => $("loginUsername").focus(), 0);
+    dlg.addEventListener(
+      "cancel",
+      (e) => {
+        e.preventDefault();
+      },
+      { once: true }
+    );
+
+    const onDone = (username) => {
+      setUser(username);
+      try {
+        dlg.close();
+      } catch {}
+      $("loginForm").onsubmit = null;
+      loginPromise = null;
+      resolve();
+    };
+
+    $("loginForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const username = ($("loginUsername").value || "").trim();
+      const password = $("loginPassword").value || "";
+      if (!username || !password) {
+        $("loginError").textContent = "请输入账号与密码。";
+        return;
+      }
+      try {
+        const resp = await fetch("/api/v1/login", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const res = await resp.json().catch(() => ({}));
+        if (!resp.ok || res.error) {
+          $("loginError").textContent = "账号或密码错误。";
+          return;
+        }
+        onDone(res.user?.username || username);
+      } catch (err) {
+        $("loginError").textContent = String(err?.message || err);
+      }
+    };
+  });
+  return loginPromise;
+}
+
+async function requireLogin() {
+  try {
+    const me = await API.get("/me");
+    setUser(me.user?.username || "admin");
+    return;
+  } catch (e) {
+    if (e?.code !== "unauthorized") throw e;
+  }
+  await startLoginFlow();
 }
 
 async function main() {
   wireEvents();
+  $("settingsBtn").disabled = true;
+  $("logoutBtn").disabled = true;
+  setUser(null);
+  await requireLogin();
   await loadAll();
   await refreshLogs();
-  setInterval(refreshStatus, 2000);
-  setInterval(refreshLogs, 3000);
+  setInterval(() => refreshStatusSafe(), 2000);
+  setInterval(async () => {
+    try {
+      await refreshLogs();
+    } catch (e) {
+      if (e?.code === "unauthorized") await requireLogin();
+      else throw e;
+    }
+  }, 3000);
 }
 
 main().catch((e) => {
   buildBadge("初始化失败", "bad");
   $("logs").textContent = String(e?.stack || e);
 });
-

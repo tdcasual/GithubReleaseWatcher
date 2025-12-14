@@ -16,12 +16,17 @@
           <div class="logo" aria-hidden="true"></div>
           <div class="brand-text">
             <div class="title">Release Watcher</div>
-            <div class="subtitle">GitHub Release 监控与自动备份</div>
+            <div class="subtitle">GitHub Release 监控与备份</div>
           </div>
         </div>
         <div class="top-actions">
           <div id="statusBadge" class="badge">加载中…</div>
           <button id="runNowBtn" class="btn primary" type="button">立即检查</button>
+          <button id="settingsBtn" class="btn" type="button">设置</button>
+          <div id="userWrap" class="inline" style="gap: 8px">
+            <div id="userBadge" class="badge">未登录</div>
+            <button id="logoutBtn" class="btn" type="button">退出</button>
+          </div>
         </div>
       </header>
 
@@ -30,7 +35,7 @@
           <div class="card-head">
             <div>
               <h2>运行状态</h2>
-              <p class="muted">稳定运行，不因偶发错误停止。可随时手动触发或开启自动轮询。</p>
+              <p class="muted">可手动触发或按间隔自动轮询。偶发错误会记录但不会停止服务。</p>
             </div>
             <div class="card-actions">
               <button id="reloadBtn" class="btn" type="button">重新加载配置</button>
@@ -100,13 +105,14 @@
         <section class="card">
           <div class="card-head">
             <div>
-              <h2>运行日志</h2>
-              <p class="muted">最近日志（自动刷新）。</p>
+              <h2>活动</h2>
+              <p class="muted">仅展示关键动作：下载/清理。完整日志写入文件。</p>
             </div>
             <div class="card-actions">
-              <button id="copyLogsBtn" class="btn" type="button">复制日志</button>
+              <button id="copyLogsBtn" class="btn" type="button">复制活动</button>
             </div>
           </div>
+          <p id="logFileHint" class="hint"></p>
           <pre id="logs" class="logs">加载中…</pre>
         </section>
       </main>
@@ -150,6 +156,107 @@
         </menu>
       </form>
     </dialog>
+
+    <dialog id="settingsDialog" class="dialog">
+      <form method="dialog" class="dialog-form">
+        <div class="dialog-head">
+          <div>
+            <h3>设置</h3>
+            <p class="muted">存储位置与登录账号。</p>
+          </div>
+          <button class="icon-btn" value="cancel" aria-label="关闭">×</button>
+        </div>
+
+        <div class="label">存储</div>
+        <div class="chips" style="margin-top: 0">
+          <label class="chip">
+            <input id="storageModeLocal" type="radio" name="storageMode" value="local" />
+            <span>本地</span>
+          </label>
+          <label class="chip">
+            <input id="storageModeWebdav" type="radio" name="storageMode" value="webdav" />
+            <span>WebDAV</span>
+          </label>
+        </div>
+
+        <label class="label" for="localDirInput">本地保存目录（WebDAV 模式下用于本地缓存）</label>
+        <input id="localDirInput" class="input" placeholder="downloads" />
+
+        <div id="webdavFields">
+          <label class="label" for="webdavBaseUrl">WebDAV Base URL</label>
+          <input id="webdavBaseUrl" class="input" placeholder="https://example.com/dav/backup/" />
+
+          <div class="row">
+            <div class="grow">
+              <label class="label" for="webdavUsername">用户名</label>
+              <input id="webdavUsername" class="input" autocomplete="username" />
+            </div>
+            <div class="grow">
+              <label class="label" for="webdavPassword">密码（留空不修改）</label>
+              <input id="webdavPassword" class="input" type="password" autocomplete="current-password" />
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="grow">
+              <label class="label" for="webdavTimeout">超时（秒）</label>
+              <input id="webdavTimeout" class="input" type="number" min="5" max="600" step="1" />
+            </div>
+            <div class="grow">
+              <label class="label" style="margin-bottom: 6px">校验 TLS</label>
+              <label class="switch">
+                <input id="webdavVerifyTls" type="checkbox" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="label">账号</div>
+        <div class="row">
+          <div class="grow">
+            <label class="label" for="authUsername">用户名</label>
+            <input id="authUsername" class="input" autocomplete="username" />
+          </div>
+          <div class="grow">
+            <label class="label" for="authPassword">新密码（留空不修改）</label>
+            <input id="authPassword" class="input" type="password" autocomplete="new-password" />
+          </div>
+        </div>
+
+        <p id="settingsHint" class="hint"></p>
+
+        <menu class="dialog-actions">
+          <button id="testWebdavBtn" class="btn" type="button">测试 WebDAV</button>
+          <button id="saveSettingsBtn" class="btn primary" type="button">保存</button>
+          <button class="btn" value="cancel">关闭</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="loginDialog" class="dialog">
+      <form id="loginForm" class="dialog-form">
+        <div class="dialog-head">
+          <div>
+            <h3>登录</h3>
+            <p class="muted">默认账号密码为 <code>admin</code> / <code>admin</code>。</p>
+          </div>
+        </div>
+
+        <p id="loginError" class="hint danger"></p>
+
+        <label class="label" for="loginUsername">账号</label>
+        <input id="loginUsername" class="input" autocomplete="username" />
+
+        <label class="label" for="loginPassword">密码</label>
+        <input id="loginPassword" class="input" type="password" autocomplete="current-password" />
+
+        <menu class="dialog-actions">
+          <button id="loginBtn" class="btn primary" type="submit">登录</button>
+        </menu>
+      </form>
+    </dialog>
   </body>
 </html>
-

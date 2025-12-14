@@ -5,6 +5,7 @@ import logging
 import sys
 from pathlib import Path
 import json
+import argparse
 
 # Ensure project root is on sys.path so local package imports work when running this script
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,22 +16,26 @@ from github_release_watcher.config import load_config
 
 
 class FakeDownloader:
-    def __init__(self, fetch_path: str = "fetch", github_token: str | None = None):
-        self.fetch_path = fetch_path
+    def __init__(self, github_token: str | None = None, timeout_seconds: int = 60, max_retries: int = 3):
         self.github_token = github_token
 
-    def download_release_asset(self, repo_url: str, tag: str, asset_name: str, dest_dir: Path) -> None:
+    def download_release_asset(self, repo_url: str, tag: str, asset, dest_dir: Path) -> None:
         dest_dir.mkdir(parents=True, exist_ok=True)
-        path = dest_dir / asset_name
-        path.write_text(f"fake-content for {asset_name}\n", encoding="utf-8")
+        path = dest_dir / asset.name
+        path.write_text(f"fake-content for {asset.name}\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--fake", action="store_true", help="Use FakeDownloader (writes simulated files, no network).")
+    args = parser.parse_args(argv)
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cfg = load_config(Path("config.toml"))
 
-    # Replace real downloader with fake one to avoid needing 'fetch'
-    watcher.FetchDownloader = FakeDownloader
+    if args.fake:
+        # Replace real downloader with fake one (no network download).
+        watcher.GitHubReleaseAssetDownloader = FakeDownloader
 
     rc = watcher.run_once(cfg)
 
