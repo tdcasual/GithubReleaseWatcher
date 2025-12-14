@@ -73,6 +73,7 @@ python3 watcher.py --config config.toml --web --no-ui
 - `GET /api/v1/repos`：仓库列表（包含统计、下次检查时间、推荐间隔）
 - `GET /api/v1/repos/<owner>/<repo>`：单仓库统计
 - `GET /api/v1/repos/<owner>/<repo>/activity?limit=...`：单仓库活动列表
+- `GET /api/v1/repos/<owner>/<repo>/releases?limit=...`：单仓库已保存版本列表（来自 `state.json`）
 - `POST /api/v1/storage/test`：测试 WebDAV 连通性（可传 `{"webdav":{...}}`）
 - Web 页面：
   - 首页「活动」：仅展示下载/清理等关键动作（全局）

@@ -77,9 +77,32 @@
               <div class="kv-k">删除旧版本次数</div>
               <div id="cleanupTotal" class="kv-v">0</div>
             </div>
+            <div class="kv-item">
+              <div class="kv-k">已保存版本数</div>
+              <div id="downloadedReleasesTotal" class="kv-v">0</div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-k">下载失败次数</div>
+              <div id="downloadErrorsTotal" class="kv-v">0</div>
+            </div>
           </div>
 
           <p id="updateHint" class="hint"></p>
+          <p id="errorHint" class="hint danger"></p>
+        </section>
+
+        <section class="card card-releases">
+          <div class="card-head">
+            <div>
+              <h2>版本</h2>
+              <p class="muted">已保存的 Release 版本（来自 state.json）。</p>
+            </div>
+            <div class="card-actions">
+              <button id="copyReleasesBtn" class="btn" type="button">复制版本列表</button>
+            </div>
+          </div>
+          <p id="releaseStatsHint" class="hint"></p>
+          <pre id="releases" class="logs">加载中…</pre>
         </section>
 
         <section class="card card-logs">

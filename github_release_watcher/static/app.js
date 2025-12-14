@@ -60,6 +60,11 @@ let currentUser = null;
 let loginPromise = null;
 let toastTimer = null;
 let repoSummaryByKey = new Map();
+let settingsDialogDraftSnapshot = null;
+let settingsDialogDirtyBefore = false;
+let settingsDialogAuthUsernameBefore = "";
+let settingsDialogSaved = false;
+let lastWebdavTest = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -143,6 +148,15 @@ function isoToLocal(iso) {
   }
 }
 
+function isoToRelative(iso) {
+  if (!iso) return "-";
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "-";
+  const delta = Math.round((t - Date.now()) / 1000);
+  if (delta <= 0) return "已到期";
+  return secondsToHuman(delta);
+}
+
 function secondsToHoursValue(seconds) {
   const s = Number(seconds);
   if (!Number.isFinite(s) || s <= 0) return "48";
@@ -171,12 +185,16 @@ function repoSummaryText(summary) {
   if (!summary) return "";
   const stats = summary.stats || {};
   const current = stats.current_tag || stats.latest_release_tag || "-";
+  const statusText =
+    stats.last_check_ok === true ? "正常" : stats.last_check_ok === false ? (stats.last_error_type === "network" ? "网络错误" : "错误") : "未知";
+  const versions = summary.downloaded_releases_total ?? 0;
   const downloads = stats.download_assets_total ?? 0;
   const cleanups = stats.cleanup_tags_total ?? 0;
   const median = summary.update?.median_interval_seconds;
-  const next = summary.next_run_at ? isoToLocal(summary.next_run_at) : "-";
+  const next = summary.next_run_at ? isoToRelative(summary.next_run_at) : "-";
   const updateEvery = median ? secondsToHuman(median) : "-";
-  return `当前：${current} · 下载：${downloads} · 删除：${cleanups} · 更新约：${updateEvery} · 下次：${next}`;
+  const checkEvery = summary.recommended_interval_seconds ? secondsToHuman(summary.recommended_interval_seconds) : "-";
+  return `状态：${statusText} · 当前：${current} · 版本：${versions} · 资产：${downloads} · 删除：${cleanups} · 更新约：${updateEvery} · 检查约：${checkEvery} · 下次：${next}`;
 }
 
 function buildBadge(text, cls) {
@@ -194,6 +212,46 @@ function setUser(username) {
 
 function cloneDeep(obj) {
   return JSON.parse(JSON.stringify(obj));
+}
+
+function stableCopy(value) {
+  if (Array.isArray(value)) return value.map(stableCopy);
+  if (!value || typeof value !== "object") return value;
+  const out = {};
+  for (const key of Object.keys(value).sort()) {
+    out[key] = stableCopy(value[key]);
+  }
+  return out;
+}
+
+function stableStringify(value) {
+  return JSON.stringify(stableCopy(value));
+}
+
+function hasSettingsDialogUnsavedChanges() {
+  if (!settingsDialogDraftSnapshot || !draft) return false;
+  try {
+    return stableStringify(draft) !== stableStringify(settingsDialogDraftSnapshot);
+  } catch {
+    return false;
+  }
+}
+
+function renderWebdavTestHint() {
+  const el = $("webdavTestHint");
+  if (!el) return;
+  if (!lastWebdavTest) {
+    el.className = "hint";
+    el.textContent = "上次测试：未测试";
+    return;
+  }
+  el.className = lastWebdavTest.ok ? "hint" : "hint danger";
+  el.textContent = `上次测试：${lastWebdavTest.time} · ${lastWebdavTest.ok ? "连接正常" : `失败：${lastWebdavTest.message}`}`;
+}
+
+function invalidateWebdavTest() {
+  lastWebdavTest = null;
+  renderWebdavTestHint();
 }
 
 function repoDraft(key) {
@@ -231,7 +289,69 @@ function renderTypeChips(container, selected, onChange) {
 function renderRepos() {
   const wrap = $("repos");
   wrap.innerHTML = "";
-  for (const repo of config.repos) {
+  const countHint = $("repoCountHint");
+  if (!config || !Array.isArray(config.repos)) {
+    if (countHint) countHint.textContent = "";
+    return;
+  }
+
+  const filterText = String($("repoFilterInput")?.value || "")
+    .trim()
+    .toLowerCase();
+  const sortMode = String($("repoSortSelect")?.value || "default").trim();
+
+  let repos = Array.from(config.repos);
+  if (filterText) {
+    repos = repos.filter((r) => {
+      const key = String(r?.key || "").toLowerCase();
+      const name = String(r?.name || "").toLowerCase();
+      return key.includes(filterText) || name.includes(filterText);
+    });
+  }
+
+  const statusRank = (repoKey) => {
+    const summary = repoSummaryByKey.get(repoKey);
+    const ok = summary?.stats?.last_check_ok;
+    if (ok === false) return summary?.stats?.last_error_type === "network" ? 0 : 1;
+    if (ok === true) return 3;
+    return 2;
+  };
+  const nextRank = (repoKey) => {
+    const summary = repoSummaryByKey.get(repoKey);
+    const iso = summary?.next_run_at;
+    const t = iso ? Date.parse(iso) : Number.POSITIVE_INFINITY;
+    return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+  };
+
+  if (sortMode === "status") {
+    repos.sort((a, b) => {
+      const ak = String(a.key || "");
+      const bk = String(b.key || "");
+      const ar = statusRank(ak);
+      const br = statusRank(bk);
+      if (ar !== br) return ar - br;
+      const an = nextRank(ak);
+      const bn = nextRank(bk);
+      if (an !== bn) return an - bn;
+      return ak.localeCompare(bk);
+    });
+  } else if (sortMode === "next") {
+    repos.sort((a, b) => {
+      const ak = String(a.key || "");
+      const bk = String(b.key || "");
+      const an = nextRank(ak);
+      const bn = nextRank(bk);
+      if (an !== bn) return an - bn;
+      return ak.localeCompare(bk);
+    });
+  }
+
+  if (countHint) {
+    const suffix = filterText ? `（筛选：${repos.length}/${config.repos.length}）` : `（共 ${config.repos.length}）`;
+    countHint.textContent = suffix;
+  }
+
+  for (const repo of repos) {
     const row = document.createElement("div");
     row.className = "repo";
 
@@ -264,11 +384,14 @@ function renderRepos() {
     right.className = "inline";
     right.style.gap = "10px";
 
+    const repoPatch = draft?.repos?.[repo.key] || {};
+    const enabledValue = repoPatch.enabled ?? repo.enabled;
+
     const runBtn = document.createElement("button");
     runBtn.className = "btn";
     runBtn.type = "button";
-    runBtn.textContent = "下载";
-    runBtn.disabled = !repo.enabled;
+    runBtn.textContent = "检查";
+    runBtn.disabled = !enabledValue;
     runBtn.addEventListener("click", async () => {
       setButtonBusy(runBtn, true, "触发中…");
       try {
@@ -301,7 +424,7 @@ function renderRepos() {
     sw.className = "switch";
     const enabled = document.createElement("input");
     enabled.type = "checkbox";
-    enabled.checked = !!repo.enabled;
+    enabled.checked = !!enabledValue;
     enabled.addEventListener("change", () => {
       repoDraft(repo.key).enabled = enabled.checked;
       runBtn.disabled = isBusy(runBtn) || !enabled.checked;
@@ -335,8 +458,12 @@ function renderRepos() {
     keepInput.type = "number";
     keepInput.min = "1";
     keepInput.max = "1000";
-    keepInput.placeholder = String(repo.effective_keep_last ?? "");
-    keepInput.value = repo.keep_last ?? "";
+    const globalKeepLastRaw = Number($("keepLastInput")?.value || NaN);
+    const globalKeepLast = Number.isFinite(globalKeepLastRaw) && globalKeepLastRaw >= 1 ? Math.trunc(globalKeepLastRaw) : Number(config.app.keep_last || 1);
+    const repoKeepLast = repoPatch.keep_last;
+    const effectiveKeepLast = typeof repoKeepLast === "number" && Number.isFinite(repoKeepLast) ? repoKeepLast : globalKeepLast;
+    keepInput.placeholder = String(effectiveKeepLast);
+    keepInput.value = repoKeepLast ?? "";
     keepInput.addEventListener("input", () => {
       const v = keepInput.value.trim();
       repoDraft(repo.key).keep_last = v ? Number(v) : null;
@@ -352,7 +479,7 @@ function renderRepos() {
     typesLabel.textContent = "保存哪些发布资产（按类型后缀）";
     const chips = document.createElement("div");
     chips.className = "chips";
-    const baseTypes = repo.asset_types_effective || [];
+    const baseTypes = Array.isArray(repoPatch.asset_types) ? repoPatch.asset_types : repo.asset_types_effective || [];
     const getTypes = () => repoDraft(repo.key).asset_types ?? baseTypes;
     const onTypeChange = (key, checked) => {
       const current = new Set(getTypes());
@@ -462,6 +589,7 @@ function syncSettingsFormFromDraft() {
 
   const fields = $("webdavFields");
   fields.classList.toggle("hidden", mode !== "webdav");
+  renderWebdavTestHint();
 }
 
 function syncDraftFromSettingsForm() {
@@ -490,6 +618,8 @@ function setConfigLoadedUI(loaded) {
 
   $("intervalInput").disabled = !loaded;
   $("keepLastInput").disabled = !loaded;
+  $("repoFilterInput").disabled = !loaded;
+  $("repoSortSelect").disabled = !loaded;
   setDirty(dirty);
 }
 
@@ -505,7 +635,7 @@ async function loadAll() {
     return;
   }
   setConfigLoadedUI(true);
-  $("configHint").textContent = `配置文件：${status.config_path}（覆盖文件：${status.overrides_path}）`;
+  $("configHint").textContent = `配置文件：${status.config_path}（覆盖文件：${status.overrides_path}） · 调度：按仓库自适应`;
   if (status.auth?.username) {
     setUser(status.auth.username);
     $("authUsername").value = status.auth.username;
@@ -817,7 +947,14 @@ function wireEvents() {
       toast("配置未加载。", "bad");
       return;
     }
+    settingsDialogDraftSnapshot = cloneDeep(draft);
+    settingsDialogDirtyBefore = dirty;
+    settingsDialogAuthUsernameBefore = $("authUsername")?.value || "";
+    settingsDialogSaved = false;
     $("settingsHint").textContent = "";
+    if (currentUser && $("authUsername")) $("authUsername").value = currentUser;
+    if ($("webdavPassword")) $("webdavPassword").value = "";
+    if ($("authPassword")) $("authPassword").value = "";
     syncSettingsFormFromDraft();
     $("settingsDialog").showModal();
     setTimeout(() => $("localDirInput")?.focus(), 0);
@@ -868,8 +1005,13 @@ function wireEvents() {
       el.disabled = false;
     }
   });
-  $("keepLastInput").addEventListener("input", () => setDirty(true));
+  $("keepLastInput").addEventListener("input", () => {
+    setDirty(true);
+    renderRepos();
+  });
   $("intervalInput").addEventListener("input", () => setDirty(true));
+  $("repoFilterInput").addEventListener("input", () => renderRepos());
+  $("repoSortSelect").addEventListener("change", () => renderRepos());
   $("addRepoBtn").addEventListener("click", openRepoDialog);
   $("copyLogsBtn").addEventListener("click", copyLogs);
 
@@ -877,6 +1019,57 @@ function wireEvents() {
   settingsForm?.addEventListener("submit", (e) => e.preventDefault());
   const repoForm = $("repoDialog").querySelector("form");
   repoForm?.addEventListener("submit", (e) => e.preventDefault());
+
+  const settingsDialog = $("settingsDialog");
+  for (const btn of settingsDialog.querySelectorAll('button[value="cancel"]')) {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      settingsDialogSaved = false;
+      if (hasSettingsDialogUnsavedChanges()) {
+        const ok = window.confirm("设置未保存，确定取消并丢弃本次修改吗？");
+        if (!ok) return;
+      }
+      try {
+        settingsDialog.close();
+      } catch {}
+    });
+  }
+  settingsDialog.addEventListener("cancel", (e) => {
+    settingsDialogSaved = false;
+    if (!hasSettingsDialogUnsavedChanges()) return;
+    const ok = window.confirm("设置未保存，确定取消并丢弃本次修改吗？");
+    if (!ok) e.preventDefault();
+  });
+  settingsDialog.addEventListener("close", () => {
+    const saved = settingsDialogSaved;
+    settingsDialogSaved = false;
+
+    if ($("webdavPassword")) $("webdavPassword").value = "";
+    if ($("authPassword")) $("authPassword").value = "";
+    $("settingsHint").textContent = "";
+
+    if (!saved && settingsDialogDraftSnapshot) {
+      draft = settingsDialogDraftSnapshot;
+      dirty = settingsDialogDirtyBefore;
+      setDirty(dirty);
+      if ($("authUsername")) $("authUsername").value = settingsDialogAuthUsernameBefore || $("authUsername").value;
+      syncSettingsFormFromDraft();
+      renderRepos();
+    }
+
+    settingsDialogDraftSnapshot = null;
+    settingsDialogAuthUsernameBefore = "";
+  });
+
+  const repoDialog = $("repoDialog");
+  for (const btn of repoDialog.querySelectorAll('button[value="cancel"]')) {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      try {
+        repoDialog.close();
+      } catch {}
+    });
+  }
   for (const id of [
     "storageModeLocal",
     "storageModeWebdav",
@@ -892,6 +1085,10 @@ function wireEvents() {
     $(id).addEventListener("input", () => setDirty(true));
     $(id).addEventListener("change", () => setDirty(true));
   }
+  for (const id of ["webdavBaseUrl", "webdavUsername", "webdavPassword", "webdavTimeout", "webdavVerifyTls"]) {
+    $(id).addEventListener("input", invalidateWebdavTest);
+    $(id).addEventListener("change", invalidateWebdavTest);
+  }
   $("storageModeLocal").addEventListener("change", syncDraftFromSettingsForm);
   $("storageModeWebdav").addEventListener("change", syncDraftFromSettingsForm);
 
@@ -899,6 +1096,9 @@ function wireEvents() {
     const btn = $("testWebdavBtn");
     setButtonBusy(btn, true, "测试中…");
     $("settingsHint").textContent = "";
+    if (!$("storageModeWebdav").checked) {
+      toast("提示：当前不是 WebDAV 模式，仍可测试填写的连接信息。", "warn");
+    }
     const patch = {
       base_url: $("webdavBaseUrl").value.trim(),
       username: $("webdavUsername").value.trim(),
@@ -908,10 +1108,16 @@ function wireEvents() {
     };
     try {
       const res = await withAuth(() => API.post("/storage/test", { webdav: patch }));
-      $("settingsHint").textContent = res.ok ? "WebDAV 连接正常。" : `WebDAV 测试失败：${res.error || ""}`;
+      lastWebdavTest = {
+        time: new Date().toLocaleString(),
+        ok: !!res.ok,
+        message: String(res.error || ""),
+      };
+      renderWebdavTestHint();
       toast(res.ok ? "WebDAV 连接正常。" : `WebDAV 测试失败：${res.error || ""}`, res.ok ? "ok" : "warn");
     } catch (e) {
-      $("settingsHint").textContent = `WebDAV 测试失败：${formatError(e)}`;
+      lastWebdavTest = { time: new Date().toLocaleString(), ok: false, message: formatError(e) };
+      renderWebdavTestHint();
       toast(`WebDAV 测试失败：${formatError(e)}`, "bad");
     } finally {
       setButtonBusy(btn, false);
@@ -921,6 +1127,7 @@ function wireEvents() {
   $("saveSettingsBtn").addEventListener("click", async () => {
     const ok = await saveSettings({ busyButtons: [$("saveSettingsBtn")] });
     if (!ok) return;
+    settingsDialogSaved = true;
     try {
       $("settingsDialog").close();
     } catch {}

@@ -40,6 +40,8 @@ const $ = (id) => document.getElementById(id);
 let toastTimer = null;
 let loginPromise = null;
 let repoKey = null;
+let releasesCount = null;
+let recentDeletedTags = [];
 
 function isoToLocal(iso) {
   if (!iso) return "-";
@@ -96,6 +98,17 @@ function setButtonBusy(btn, busy, busyText) {
     delete btn.dataset.prevDisabled;
     delete btn.dataset.prevText;
   }
+}
+
+function updateReleaseStatsHint() {
+  const el = $("releaseStatsHint");
+  if (!el) return;
+  const parts = [];
+  if (typeof releasesCount === "number") parts.push(`已记录版本：${releasesCount}`);
+  if (Array.isArray(recentDeletedTags) && recentDeletedTags.length) {
+    parts.push(`最近删除：${recentDeletedTags.join(", ")}`);
+  }
+  el.textContent = parts.join(" · ");
 }
 
 async function withAuth(fn) {
@@ -199,6 +212,8 @@ async function loadSummary() {
   $("checksNetworkFailed").textContent = String(stats.checks_network_failed ?? 0);
   $("downloadsTotal").textContent = String(stats.download_assets_total ?? 0);
   $("cleanupTotal").textContent = String(stats.cleanup_tags_total ?? 0);
+  $("downloadedReleasesTotal").textContent = String(info.downloaded_releases_total ?? 0);
+  $("downloadErrorsTotal").textContent = String(stats.download_errors_total ?? 0);
 
   const median = update.median_interval_seconds;
   const mean = update.mean_interval_seconds;
@@ -206,6 +221,14 @@ async function loadSummary() {
   $("updateHint").textContent = `更新频率统计：median=${secondsToHuman(median)}，mean=${secondsToHuman(mean)}（样本 ${sample}）。`;
 
   buildBadge(stats.last_check_ok ? "正常" : stats.last_check_ok === false ? "上次有错误" : "未知", stats.last_check_ok ? "ok" : "warn");
+
+  const lastErr = String(stats.last_error || "").trim();
+  if (lastErr) {
+    const kind = String(stats.last_error_type || "").trim();
+    $("errorHint").textContent = `最近错误${kind ? `（${kind}）` : ""}：${lastErr}`;
+  } else {
+    $("errorHint").textContent = "";
+  }
 }
 
 async function loadActivity() {
@@ -214,6 +237,34 @@ async function loadActivity() {
   const items = data.items || [];
   const lines = items.map((x) => `${isoToLocal(x.time)} ${x.type || ""} ${x.tag ? `[${x.tag}] ` : ""}${x.message || ""}`.trim());
   $("activity").textContent = lines.join("\n") || "暂无活动。";
+
+  const deleted = [];
+  for (const x of items.slice().reverse()) {
+    if (x?.type !== "cleanup") continue;
+    const tag = String(x?.tag || "").trim();
+    if (!tag) continue;
+    if (!deleted.includes(tag)) deleted.push(tag);
+    if (deleted.length >= 8) break;
+  }
+  recentDeletedTags = deleted;
+  updateReleaseStatsHint();
+}
+
+async function loadReleases() {
+  const [owner, repo] = repoKey.split("/");
+  const data = await API.get(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases?limit=200`);
+  const items = Array.isArray(data.items) ? data.items : [];
+  releasesCount = items.length;
+  updateReleaseStatsHint();
+
+  const lines = items.map((x) => {
+    const tag = String(x?.tag || "-");
+    const assetsCount = Number(x?.downloaded_assets_count ?? (Array.isArray(x?.downloaded_assets) ? x.downloaded_assets.length : 0));
+    const published = x?.published_at ? isoToLocal(x.published_at) : x?.created_at ? isoToLocal(x.created_at) : "-";
+    const processed = x?.processed_at ? isoToLocal(x.processed_at) : "-";
+    return `${tag} · 资产:${Number.isFinite(assetsCount) ? assetsCount : 0} · 发布:${published} · 处理:${processed}`;
+  });
+  $("releases").textContent = lines.join("\n") || "暂无版本记录。";
 }
 
 async function copyText(text) {
@@ -269,6 +320,10 @@ async function main() {
     const ok = await copyText($("activity").textContent || "");
     toast(ok ? "已复制活动。" : "复制失败，请手动选择复制。", ok ? "ok" : "warn");
   });
+  $("copyReleasesBtn").addEventListener("click", async () => {
+    const ok = await copyText($("releases").textContent || "");
+    toast(ok ? "已复制版本列表。" : "复制失败，请手动选择复制。", ok ? "ok" : "warn");
+  });
   $("copySummaryBtn").addEventListener("click", async () => {
     const summary = [
       `仓库: ${repoKey}`,
@@ -280,6 +335,8 @@ async function main() {
       `网络失败次数: ${$("checksNetworkFailed").textContent || "0"}`,
       `下载次数(资产): ${$("downloadsTotal").textContent || "0"}`,
       `删除旧版本次数: ${$("cleanupTotal").textContent || "0"}`,
+      `已保存版本数: ${$("downloadedReleasesTotal").textContent || "0"}`,
+      `下载失败次数: ${$("downloadErrorsTotal").textContent || "0"}`,
     ].join("\n");
     const ok = await copyText(summary);
     toast(ok ? "已复制摘要。" : "复制失败。", ok ? "ok" : "warn");
@@ -287,6 +344,7 @@ async function main() {
 
   await requireLogin();
   await loadSummary();
+  await loadReleases();
   await loadActivity();
 
   setInterval(async () => {
@@ -295,6 +353,12 @@ async function main() {
       await withAuth(loadSummary);
     } catch {}
   }, 5000);
+  setInterval(async () => {
+    if (document.hidden) return;
+    try {
+      await withAuth(loadReleases);
+    } catch {}
+  }, 15000);
   setInterval(async () => {
     if (document.hidden) return;
     try {

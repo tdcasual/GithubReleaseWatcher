@@ -887,6 +887,72 @@ class WatcherService:
         tail = items[-limit:]
         return [x for x in tail if isinstance(x, dict)]
 
+    def get_repo_releases(self, repo_key: str, *, limit: int = 100) -> list[dict[str, Any]]:
+        repo_key = str(repo_key or "").strip()
+        if not repo_key:
+            raise ValueError("repo_key required")
+        limit = max(1, min(int(limit), 2000))
+
+        with self._lock:
+            config = copy.deepcopy(self._config) if self._config is not None else None
+
+        if config is None:
+            raise RuntimeError("Config not loaded")
+
+        known = False
+        for repo_cfg in config.repos:
+            try:
+                key = _repo_key_from_spec(repo_cfg.name)
+            except Exception:
+                key = repo_cfg.name
+            if key == repo_key:
+                known = True
+                break
+        if not known:
+            raise ValueError("unknown repo")
+
+        state = load_state(config.state_file)
+        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
+        repo_state = repos_state.get(repo_key, {}) if isinstance(repos_state.get(repo_key), dict) else {}
+        releases = repo_state.get("releases", {}) if isinstance(repo_state.get("releases"), dict) else {}
+
+        def parse_ts(raw: Any) -> datetime | None:
+            if not isinstance(raw, str) or not raw.strip():
+                return None
+            try:
+                dt = datetime.fromisoformat(raw)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except Exception:
+                return None
+
+        items: list[dict[str, Any]] = []
+        for tag, entry in releases.items():
+            if not isinstance(tag, str) or not tag:
+                continue
+            if not isinstance(entry, dict):
+                entry = {}
+            assets = entry.get("downloaded_assets", [])
+            assets_list = assets if isinstance(assets, list) else []
+            items.append(
+                {
+                    "tag": tag,
+                    "processed_at": entry.get("processed_at"),
+                    "published_at": entry.get("published_at"),
+                    "created_at": entry.get("created_at"),
+                    "html_url": entry.get("html_url"),
+                    "downloaded_assets": [x for x in assets_list if isinstance(x, str)],
+                    "downloaded_assets_count": len([x for x in assets_list if isinstance(x, str)]),
+                    "_sort_ts": parse_ts(entry.get("published_at")) or parse_ts(entry.get("created_at")) or parse_ts(entry.get("processed_at")) or datetime.min.replace(tzinfo=timezone.utc),
+                }
+            )
+
+        items.sort(key=lambda x: x.get("_sort_ts") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+        for x in items:
+            x.pop("_sort_ts", None)
+        return items[:limit]
+
     def test_webdav(self, patch: dict[str, Any] | None = None) -> None:
         with self._lock:
             config = self._config
@@ -1239,6 +1305,21 @@ class Handler(BaseHTTPRequestHandler):
                             limit = 200
                     try:
                         items = self.server.app.get_repo_activity(repo_key, limit=limit)
+                    except Exception as exc:
+                        self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                        return
+                    self._send_json({"items": items})
+                    return
+                if len(parts) == 3 and parts[2] == "releases":
+                    qs = parse_qs(split.query)
+                    limit = 100
+                    if "limit" in qs and qs["limit"]:
+                        try:
+                            limit = _safe_int(qs["limit"][0], min_value=1, max_value=2000)
+                        except Exception:
+                            limit = 100
+                    try:
+                        items = self.server.app.get_repo_releases(repo_key, limit=limit)
                     except Exception as exc:
                         self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
                         return

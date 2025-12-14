@@ -64,11 +64,11 @@
               </div>
             </div>
             <div class="kv-item">
-              <div class="kv-k">下次运行</div>
+              <div class="kv-k">最近下次检查</div>
               <div id="nextRunAt" class="kv-v muted">-</div>
             </div>
             <div class="kv-item">
-              <div class="kv-k">上次运行</div>
+              <div class="kv-k">上次执行</div>
               <div id="lastRunAt" class="kv-v muted">-</div>
             </div>
           </div>
@@ -98,10 +98,19 @@
               <p class="muted">选择需要保存的发布类型（如 exe、apk），以及每个仓库的保留数量。</p>
             </div>
             <div class="card-actions">
+              <div class="inline" style="gap: 8px; flex-wrap: wrap">
+                <input id="repoFilterInput" class="input sm" placeholder="搜索 owner/repo" />
+                <select id="repoSortSelect" class="input sm" aria-label="排序">
+                  <option value="default">默认排序</option>
+                  <option value="status">错误优先</option>
+                  <option value="next">下次检查时间</option>
+                </select>
+              </div>
               <button id="addRepoBtn" class="btn" type="button">添加仓库</button>
             </div>
           </div>
           <div id="repos" class="repos"></div>
+          <p id="repoCountHint" class="hint"></p>
         </section>
 
         <section class="card card-logs">
@@ -133,7 +142,7 @@
             <h3>添加仓库</h3>
             <p class="muted">支持 <code>owner/repo</code> 或完整仓库 URL。</p>
           </div>
-          <button class="icon-btn" value="cancel" aria-label="关闭">×</button>
+          <button class="icon-btn" value="cancel" aria-label="取消">×</button>
         </div>
 
         <label class="label" for="newRepoName">仓库</label>
@@ -168,7 +177,7 @@
             <h3>设置</h3>
             <p class="muted">存储位置与登录账号。</p>
           </div>
-          <button class="icon-btn" value="cancel" aria-label="关闭">×</button>
+          <button class="icon-btn" value="cancel" aria-label="取消（不保存）">×</button>
         </div>
 
         <div class="label">存储</div>
@@ -188,7 +197,7 @@
 
         <div id="webdavFields">
           <label class="label" for="webdavBaseUrl">WebDAV Base URL</label>
-          <input id="webdavBaseUrl" class="input" placeholder="https://example.com/dav/backup/" />
+          <input id="webdavBaseUrl" class="input" placeholder="例如：https://example.com/dav/backup/" />
 
           <div class="row">
             <div class="grow">
@@ -214,6 +223,8 @@
               </label>
             </div>
           </div>
+
+          <p id="webdavTestHint" class="hint"></p>
         </div>
 
         <div class="divider"></div>
@@ -235,7 +246,7 @@
         <menu class="dialog-actions">
           <button id="testWebdavBtn" class="btn" type="button">测试 WebDAV</button>
           <button id="saveSettingsBtn" class="btn primary" type="button">保存</button>
-          <button class="btn" value="cancel">关闭</button>
+          <button class="btn" value="cancel">取消（不保存）</button>
         </menu>
       </form>
     </dialog>
