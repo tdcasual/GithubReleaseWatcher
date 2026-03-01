@@ -197,6 +197,26 @@ function formatSignedDelta(value) {
   return String(n);
 }
 
+function formatRunScope(last) {
+  if (!last || typeof last !== "object") return "-";
+  const source = String(last?.source || "").trim().toLowerCase();
+  const sourceLabel = source === "scheduler" ? "调度" : source === "api" || source === "manual" ? "手动" : "未知";
+  const repos = Array.isArray(last?.repos)
+    ? last.repos
+        .map((x) => String(x || "").trim())
+        .filter((x) => !!x)
+    : [];
+  const repo = String(last?.repo || "").trim();
+  if (repos.length) {
+    const brief = repos.slice(0, 3).join("、");
+    const more = repos.length > 3 ? ` 等 ${repos.length} 个仓库` : "";
+    return `批量：${brief}${more} · 来源：${sourceLabel}`;
+  }
+  if (repo) return `单仓库：${repo} · 来源：${sourceLabel}`;
+  if (source === "scheduler") return "调度执行：单仓库轮询";
+  return `全量：全部启用仓库 · 来源：${sourceLabel}`;
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -906,6 +926,7 @@ async function refreshStatus() {
   const finishedAt = last?.finished_at || last?.started_at || last?.queued_at;
   const suffix = last?.exit_code === 0 ? "（成功）" : last?.exit_code != null ? "（有错误）" : "";
   $("lastRunAt").textContent = finishedAt ? `${isoToLocal(finishedAt)} ${suffix}` : "-";
+  $("lastRunScope").textContent = formatRunScope(last);
 }
 
 async function refreshStatusSafe() {
