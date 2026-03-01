@@ -14,8 +14,8 @@ Owner: Maintainer
 
 Gate notes:
 - Gate 1: 截至 2026-03-01 12:11 CST，当前清单无登记中的 `P1/P2` 缺陷。
-- Gate 2: 待完成桌面/移动端真机手工勾选后再置为通过。
-- Gate 3: 待按关键链路进行一次完整人工验收（`测试 WebDAV -> 能力探测 -> 同步缓存 -> 缓存异常筛选/选中 -> 批量动作`）。
+- Gate 2: 待完成桌面/移动端真机手工勾选后再置为通过（执行套件：`docs/plans/2026-03-01-gate2-device-acceptance-kit.md`）。
+- Gate 3: 待按关键链路进行一次完整人工验收（执行套件：`docs/plans/2026-03-01-gate3-webdav-critical-flow-runbook.md`）。
 - Gate 4: `node --check` + 17 项 `unittest` 回归命令集已多次通过，见第 7 节证据。
 
 ---
@@ -51,6 +51,7 @@ Checks:
 Notes:
 - 已完成样式层修复：移动端 topbar 改网格、筛选控件改单列全宽、超窄屏批量工具栏改单列、repo 行控件纵向拉伸。
 - 待办：在 iOS Safari / Android Chrome 真机逐项勾选。
+- 执行脚本与模板：`docs/plans/2026-03-01-gate2-device-acceptance-kit.md`、`docs/plans/2026-03-01-gate2-device-acceptance-template.md`。
 
 ---
 
@@ -73,6 +74,7 @@ Checks:
 Notes:
 - 已在响应式模拟下验证布局修复：topbar 网格、筛选控件单列全宽、批量工具栏窄屏降为单列、repo 行控件纵向拉伸。
 - 待办：在 iOS Safari / Android Chrome 真机完成触控可用性勾选。
+- 执行脚本与模板：`docs/plans/2026-03-01-gate2-device-acceptance-kit.md`、`docs/plans/2026-03-01-gate2-device-acceptance-template.md`。
 
 ---
 
@@ -112,6 +114,7 @@ Checks:
 Notes:
 - 代码层已完成关键链路提示与守卫：缓存异常筛选/批量选择受 WebDAV 模式与同步快照前置条件限制。
 - 待办：使用真实 WebDAV 环境按 Run sequence 全链路走查，并勾选上述 5 项。
+- 执行 runbook：`docs/plans/2026-03-01-gate3-webdav-critical-flow-runbook.md`。
 
 ---
 
