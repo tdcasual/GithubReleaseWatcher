@@ -207,6 +207,39 @@ function setupMobileSectionNav() {
   }
 }
 
+function setupLogsScrollHint() {
+  const logsEl = $("logs");
+  const hintEl = document.querySelector(".logs-scroll-hint");
+  if (!logsEl || !(hintEl instanceof HTMLElement)) return;
+
+  const dismiss = () => {
+    if (hintEl.classList.contains("hidden")) return;
+    hintEl.classList.add("hidden");
+  };
+
+  logsEl.addEventListener(
+    "scroll",
+    () => {
+      if (logsEl.scrollTop > 8) dismiss();
+    },
+    { passive: true }
+  );
+  logsEl.addEventListener(
+    "touchmove",
+    () => {
+      dismiss();
+    },
+    { passive: true }
+  );
+  logsEl.addEventListener(
+    "wheel",
+    () => {
+      dismiss();
+    },
+    { passive: true }
+  );
+}
+
 function isBusy(el) {
   return el?.getAttribute("aria-busy") === "true";
 }
@@ -1095,7 +1128,22 @@ async function refreshLogs() {
   const data = await API.get("/logs?limit=200");
   const items = data.items || [];
   const lines = items.map((x) => `${isoToLocal(x.time)} ${x.message}`);
-  $("logs").textContent = lines.join("\n") || "暂无活动。";
+  const logsEl = $("logs");
+  if (logsEl) {
+    const nextText = lines.join("\n") || "暂无活动。";
+    const prevText = logsEl.textContent || "";
+    if (prevText !== nextText) {
+      const prevScrollTop = logsEl.scrollTop;
+      const nearBottom = logsEl.scrollHeight - logsEl.clientHeight - logsEl.scrollTop <= 24;
+      logsEl.textContent = nextText;
+      if (nearBottom) {
+        logsEl.scrollTop = logsEl.scrollHeight;
+      } else {
+        const maxTop = Math.max(0, logsEl.scrollHeight - logsEl.clientHeight);
+        logsEl.scrollTop = Math.min(prevScrollTop, maxTop);
+      }
+    }
+  }
 
   const hint = $("logFileHint");
   if (hint) {
@@ -2130,6 +2178,7 @@ async function requireLogin() {
 async function main() {
   wireEvents();
   setupMobileSectionNav();
+  setupLogsScrollHint();
   syncDialogOpenState();
   setConfigLoadedUI(false);
   $("logoutBtn").disabled = true;
