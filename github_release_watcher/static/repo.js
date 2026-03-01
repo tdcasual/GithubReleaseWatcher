@@ -181,6 +181,58 @@ async function withAuth(fn) {
   }
 }
 
+function replaceScrollableText(el, nextText) {
+  if (!(el instanceof HTMLElement)) return;
+  const prevText = el.textContent || "";
+  if (prevText === nextText) return;
+  const prevScrollTop = el.scrollTop;
+  const nearBottom = el.scrollHeight - el.clientHeight - el.scrollTop <= 24;
+  el.textContent = nextText;
+  if (nearBottom) {
+    el.scrollTop = el.scrollHeight;
+  } else {
+    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    el.scrollTop = Math.min(prevScrollTop, maxTop);
+  }
+}
+
+function setupLogsScrollHints() {
+  const blocks = Array.from(document.querySelectorAll("pre.logs"));
+  for (const logsEl of blocks) {
+    if (!(logsEl instanceof HTMLElement)) continue;
+    const parent = logsEl.parentElement;
+    const hintEl = parent?.querySelector(".logs-scroll-hint");
+    if (!(hintEl instanceof HTMLElement)) continue;
+
+    const dismiss = () => {
+      if (hintEl.classList.contains("hidden")) return;
+      hintEl.classList.add("hidden");
+    };
+
+    logsEl.addEventListener(
+      "scroll",
+      () => {
+        if (logsEl.scrollTop > 8) dismiss();
+      },
+      { passive: true }
+    );
+    logsEl.addEventListener(
+      "touchmove",
+      () => {
+        dismiss();
+      },
+      { passive: true }
+    );
+    logsEl.addEventListener(
+      "wheel",
+      () => {
+        dismiss();
+      },
+      { passive: true }
+    );
+  }
+}
+
 async function startLoginFlow(message) {
   if (loginPromise) return loginPromise;
   loginPromise = new Promise((resolve) => {
@@ -320,7 +372,7 @@ async function loadActivity() {
   const data = await API.get(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/activity?limit=200`);
   const items = data.items || [];
   const lines = items.map((x) => `${isoToLocal(x.time)} ${x.type || ""} ${x.tag ? `[${x.tag}] ` : ""}${x.message || ""}`.trim());
-  $("activity").textContent = lines.join("\n") || "暂无活动。";
+  replaceScrollableText($("activity"), lines.join("\n") || "暂无活动。");
 
   const deleted = [];
   for (const x of items.slice().reverse()) {
@@ -348,7 +400,7 @@ async function loadReleases() {
     const processed = x?.processed_at ? isoToLocal(x.processed_at) : "-";
     return `${tag} · 资产:${Number.isFinite(assetsCount) ? assetsCount : 0} · 发布:${published} · 处理:${processed}`;
   });
-  $("releases").textContent = lines.join("\n") || "暂无版本记录。";
+  replaceScrollableText($("releases"), lines.join("\n") || "暂无版本记录。");
 }
 
 async function copyText(text) {
@@ -588,6 +640,7 @@ async function main() {
   $("runRepoBtn").addEventListener("click", runRepoNow);
   initSectionToggles();
   setupMobileSectionNav();
+  setupLogsScrollHints();
   $("copyActivityBtn").addEventListener("click", async () => {
     const ok = await copyText($("activity").textContent || "");
     toast(ok ? "已复制活动。" : "复制失败，请手动选择复制。", ok ? "ok" : "warn");
