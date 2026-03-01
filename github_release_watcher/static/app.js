@@ -70,6 +70,7 @@ let lastStorageHealthTotals = null;
 let lastStorageHealthAt = 0;
 let selectedRepoKeys = new Set();
 let lastSyncCacheAnomalyRepoKeys = new Set();
+let hasSyncCacheSnapshot = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -438,6 +439,11 @@ function isRepoInCacheAnomalyState(key) {
   return lastSyncCacheAnomalyRepoKeys.has(String(key || ""));
 }
 
+function isWebdavStorageMode() {
+  const mode = String(draft?.storage?.mode || config?.storage?.mode || "local").trim().toLowerCase();
+  return mode === "webdav";
+}
+
 function setBatchActionHint(message, kind) {
   const el = $("batchActionHint");
   if (!el) return;
@@ -458,6 +464,8 @@ function updateBatchControlsUI() {
   const clearBtn = $("batchClearBtn");
   const selected = getSelectedRepoKeys();
   const visible = getVisibleRepoKeys();
+  const webdavMode = isWebdavStorageMode();
+  const cacheSelectReady = webdavMode && hasSyncCacheSnapshot;
   const runnableCount = selected.filter((key) => isRepoEnabledForRun(key)).length;
   const count = selected.length;
   if (countEl) countEl.textContent = `已选 ${count} 个仓库（当前筛选 ${visible.length} 个，可检查 ${runnableCount} 个）`;
@@ -467,7 +475,12 @@ function updateBatchControlsUI() {
   if (invertVisibleBtn) invertVisibleBtn.disabled = isBusy(invertVisibleBtn) || visibleDisabled;
   if (selectEnabledBtn) selectEnabledBtn.disabled = isBusy(selectEnabledBtn) || visibleDisabled;
   if (selectErrorBtn) selectErrorBtn.disabled = isBusy(selectErrorBtn) || visibleDisabled;
-  if (selectCacheAnomalyBtn) selectCacheAnomalyBtn.disabled = isBusy(selectCacheAnomalyBtn) || visibleDisabled;
+  if (selectCacheAnomalyBtn) {
+    selectCacheAnomalyBtn.disabled = isBusy(selectCacheAnomalyBtn) || visibleDisabled || !cacheSelectReady;
+    if (!webdavMode) selectCacheAnomalyBtn.title = "当前存储模式不是 WebDAV。";
+    else if (!hasSyncCacheSnapshot) selectCacheAnomalyBtn.title = '请先在设置中执行一次“同步缓存”。';
+    else selectCacheAnomalyBtn.title = "";
+  }
   if (runBtn) runBtn.disabled = isBusy(runBtn) || !config || runnableCount <= 0;
   if (enableBtn) enableBtn.disabled = isBusy(enableBtn) || disabled;
   if (disableBtn) disableBtn.disabled = isBusy(disableBtn) || disabled;
@@ -976,6 +989,15 @@ async function refreshStorageDiagnostics() {
   if (mode !== "webdav") {
     lastStorageHealthTotals = null;
     lastStorageHealthAt = 0;
+    hasSyncCacheSnapshot = false;
+    lastSyncCacheAnomalyRepoKeys = new Set();
+    const stateSelect = $("repoStateFilterSelect");
+    if (stateSelect?.value === "cache_anomaly") {
+      stateSelect.value = "all";
+      renderRepos();
+    } else {
+      updateBatchControlsUI();
+    }
     capsEl.className = "hint";
     capsEl.textContent = "当前为本地存储模式。";
     healthEl.className = "hint";
@@ -1138,10 +1160,18 @@ function batchSelectErrorVisible() {
 }
 
 function batchSelectCacheAnomalyVisible() {
+  if (!isWebdavStorageMode()) {
+    setBatchActionHint("当前存储模式不是 WebDAV，无法选择缓存异常仓库。", "danger");
+    return;
+  }
+  if (!hasSyncCacheSnapshot) {
+    setBatchActionHint("请先在设置中执行一次“同步缓存”，再选择缓存异常仓库。", "danger");
+    return;
+  }
   batchSelectByFilter(
     (key) => isRepoInCacheAnomalyState(key),
     (count) => `已选中 ${count} 个缓存异常仓库。`,
-    "当前筛选结果中没有可新增的缓存异常仓库（请先执行一次“同步缓存”）。"
+    "当前筛选结果中没有可新增的缓存异常仓库。"
   );
 }
 
@@ -1765,6 +1795,7 @@ function wireEvents() {
         .filter((x) => x.repo && (x.stale > 0 || x.missing > 0))
         .map((x) => x.repo);
       lastSyncCacheAnomalyRepoKeys = new Set(anomalyRepos);
+      hasSyncCacheSnapshot = true;
       const pruned = Number(totals.pruned_files || 0);
       const staleCount = Number(totals.stale_files || 0);
       const missingCount = Number(totals.missing_files || 0);
@@ -1799,6 +1830,7 @@ function wireEvents() {
       toast(`缓存同步失败：${formatError(e)}`, "bad");
     } finally {
       setButtonBusy(btn, false);
+      updateBatchControlsUI();
     }
   });
 
