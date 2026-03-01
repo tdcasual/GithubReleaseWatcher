@@ -69,6 +69,7 @@ let mustChangePassword = false;
 let lastStorageHealthTotals = null;
 let lastStorageHealthAt = 0;
 let selectedRepoKeys = new Set();
+let lastSyncCacheAnomalyRepoKeys = new Set();
 
 const $ = (id) => document.getElementById(id);
 
@@ -323,6 +324,14 @@ function getRepoListView() {
     });
   }
   if (stateFilter !== "all") {
+    const validRepoKeys = new Set(repos.map((r) => String(r?.key || "")));
+    if (stateFilter === "cache_anomaly") {
+      const next = new Set();
+      for (const key of lastSyncCacheAnomalyRepoKeys) {
+        if (validRepoKeys.has(key)) next.add(key);
+      }
+      lastSyncCacheAnomalyRepoKeys = next;
+    }
     repos = repos.filter((r) => {
       const key = String(r?.key || "");
       const enabled = isRepoEnabledForRun(key);
@@ -332,6 +341,9 @@ function getRepoListView() {
       if (stateFilter === "network_error") {
         const summary = repoSummaryByKey.get(key);
         return summary?.stats?.last_check_ok === false && summary?.stats?.last_error_type === "network";
+      }
+      if (stateFilter === "cache_anomaly") {
+        return lastSyncCacheAnomalyRepoKeys.has(key);
       }
       return true;
     });
@@ -504,6 +516,7 @@ function renderRepos() {
       disabled: "停用",
       error: "异常",
       network_error: "网络异常",
+      cache_anomaly: "缓存异常",
     };
     const stateLabel = stateLabelMap[stateFilter] || "全部";
     const hasFilter = !!filterText || stateFilter !== "all";
@@ -1728,6 +1741,15 @@ function wireEvents() {
       const data = await withAuth(() => API.post("/storage/sync-cache", { prune }));
       const totals = data.totals || {};
       const items = Array.isArray(data.items) ? data.items : [];
+      const anomalyRepos = items
+        .map((item) => ({
+          repo: String(item?.repo || "").trim(),
+          stale: Number(item?.stale_files || 0),
+          missing: Number(item?.missing_files || 0),
+        }))
+        .filter((x) => x.repo && (x.stale > 0 || x.missing > 0))
+        .map((x) => x.repo);
+      lastSyncCacheAnomalyRepoKeys = new Set(anomalyRepos);
       const pruned = Number(totals.pruned_files || 0);
       const staleCount = Number(totals.stale_files || 0);
       const missingCount = Number(totals.missing_files || 0);
@@ -1747,8 +1769,9 @@ function wireEvents() {
             return `<a href="${href}">${escapeHtml(label)}</a>`;
           })
           .join("；");
-        hint.innerHTML = `${escapeHtml(summary)}${prune ? ` 已清理 ${pruned} 个。` : ""} 重点仓库：${topLinks}`;
+        hint.innerHTML = `${escapeHtml(summary)}${prune ? ` 已清理 ${pruned} 个。` : ""} 重点仓库：${topLinks}。可在仓库状态筛选中选择“仅缓存异常”进行批量处理。`;
       }
+      if ($("repoStateFilterSelect")?.value === "cache_anomaly") renderRepos();
       if (prune) {
         // Keep toast lightweight; detailed cleanup context is shown in hint.
         toast(`缓存同步完成，已清理 ${pruned} 个。`, "ok");
