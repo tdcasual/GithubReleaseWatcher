@@ -135,7 +135,7 @@ Notes:
 
 ## 7. Automated Regression Evidence
 
-Run time (UTC+8): 2026-03-01 11:58 CST
+Run time (UTC+8): 2026-03-01 17:10 CST
 
 Commands:
 
@@ -163,6 +163,9 @@ Evidence notes:
 - 2026-03-01 16:13 CST rerun (after modal-open nav/scroll guard + reduced-motion polish): same command set passed.
 - 2026-03-01 16:38 CST rerun (after mobile hint auto-reveal + iOS input-size polish): same command set passed.
 - 2026-03-01 16:49 CST rerun (after logs scroll hint + coarse-pointer press feedback polish): same command set passed.
+- 2026-03-01 17:02 CST rerun (after index page logs auto-refresh scroll-context polish): same command set passed.
+- 2026-03-01 17:06 CST rerun (after repo page activity/releases auto-refresh scroll-context polish): same command set passed.
+- 2026-03-01 17:09 CST rerun (after acceptance status checker tooling integration): same command set passed.
 - Follow-up: `urllib3` reported `NotOpenSSLWarning` on local Python runtime (`LibreSSL 2.8.3`); does not block current functional checks.
 
 ---
