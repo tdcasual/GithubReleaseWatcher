@@ -160,6 +160,7 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 
 - 收尾执行计划：`docs/plans/2026-03-01-release-polish-plan.md`
 - 发布验收清单：`docs/plans/2026-03-01-release-acceptance-checklist.md`
+- 发布交付说明（handoff）：`docs/plans/2026-03-01-release-handoff.md`
 - Gate 2 真机验收执行套件：`docs/plans/2026-03-01-gate2-device-acceptance-kit.md`
 - Gate 2 真机验收填写模板：`docs/plans/2026-03-01-gate2-device-acceptance-template.md`
 - Gate 3 WebDAV 关键链路 runbook：`docs/plans/2026-03-01-gate3-webdav-critical-flow-runbook.md`

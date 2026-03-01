@@ -181,5 +181,8 @@ Rollback plan:
 4. 回滚后执行最小冒烟：
    - 登录 -> 首页加载 -> 单仓库“检查” -> 批量“检查” -> 设置页“测试 WebDAV”。
 
+Release handoff:
+- 发布交付说明：`docs/plans/2026-03-01-release-handoff.md`
+
 Approver: ________  
 Date: ________
