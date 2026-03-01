@@ -142,6 +142,11 @@ function updateReleaseStatsHint() {
   el.textContent = parts.join(" · ");
 }
 
+function syncDialogOpenState() {
+  const hasOpenDialog = !!document.querySelector("dialog[open]");
+  document.body.classList.toggle("dialog-open", hasOpenDialog);
+}
+
 async function withAuth(fn) {
   try {
     return await fn();
@@ -160,6 +165,7 @@ async function startLoginFlow(message) {
     $("loginUsername").value = "";
     $("loginPassword").value = "";
     dlg.showModal();
+    syncDialogOpenState();
     setTimeout(() => $("loginUsername").focus(), 0);
     dlg.addEventListener(
       "cancel",
@@ -403,7 +409,8 @@ function setupMobileSectionNav() {
     const target = document.getElementById(id);
     if (!target) return;
     const targetY = window.scrollY + target.getBoundingClientRect().top - topOffset();
-    window.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: Math.max(0, targetY), behavior: reduceMotion ? "auto" : "smooth" });
     if (history.replaceState) history.replaceState(null, "", `#${id}`);
   };
 
@@ -546,6 +553,10 @@ async function main() {
   $("repoTitle").textContent = repoKey;
   $("repoSubtitle").textContent = "活动与统计";
   renderSecurityBanner();
+  syncDialogOpenState();
+  $("loginDialog")?.addEventListener("close", () => {
+    syncDialogOpenState();
+  });
 
   $("runRepoBtn").addEventListener("click", runRepoNow);
   initSectionToggles();

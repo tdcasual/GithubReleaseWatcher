@@ -95,6 +95,11 @@ function focusIfPossible(el) {
   }
 }
 
+function syncDialogOpenState() {
+  const hasOpenDialog = !!document.querySelector("dialog[open]");
+  document.body.classList.toggle("dialog-open", hasOpenDialog);
+}
+
 function setupMobileSectionNav() {
   const nav = document.querySelector(".mobile-nav");
   if (!nav) return;
@@ -130,7 +135,8 @@ function setupMobileSectionNav() {
     const target = document.getElementById(id);
     if (!target) return;
     const targetY = window.scrollY + target.getBoundingClientRect().top - topOffset();
-    window.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: Math.max(0, targetY), behavior: reduceMotion ? "auto" : "smooth" });
     if (history.replaceState) history.replaceState(null, "", `#${id}`);
   };
 
@@ -1615,6 +1621,7 @@ function openRepoDialog() {
   };
 
   dlg.showModal();
+  syncDialogOpenState();
   setTimeout(() => $("newRepoName")?.focus(), 0);
 }
 
@@ -1663,6 +1670,7 @@ function openSettingsDialog(options = {}) {
   if ($("authPassword")) $("authPassword").value = "";
   syncSettingsFormFromDraft();
   $("settingsDialog").showModal();
+  syncDialogOpenState();
   refreshStorageDiagnostics().catch(() => {});
   setTimeout(() => {
     if (focusAuthPassword) $("authPassword")?.focus();
@@ -1789,6 +1797,7 @@ function wireEvents() {
 
     settingsDialogDraftSnapshot = null;
     settingsDialogAuthUsernameBefore = "";
+    syncDialogOpenState();
     if (!focusIfPossible(returnFocusEl)) focusIfPossible($("settingsBtn"));
   });
 
@@ -1804,7 +1813,12 @@ function wireEvents() {
   repoDialog.addEventListener("close", () => {
     const returnFocusEl = repoDialogReturnFocusEl;
     repoDialogReturnFocusEl = null;
+    syncDialogOpenState();
     if (!focusIfPossible(returnFocusEl)) focusIfPossible($("addRepoBtn"));
+  });
+  const loginDialog = $("loginDialog");
+  loginDialog?.addEventListener("close", () => {
+    syncDialogOpenState();
   });
   for (const id of [
     "storageModeLocal",
@@ -2004,6 +2018,7 @@ function startLoginFlow(message) {
     $("loginUsername").value = "";
     $("loginPassword").value = "";
     dlg.showModal();
+    syncDialogOpenState();
     setTimeout(() => $("loginUsername").focus(), 0);
     dlg.addEventListener(
       "cancel",
@@ -2074,6 +2089,7 @@ async function requireLogin() {
 async function main() {
   wireEvents();
   setupMobileSectionNav();
+  syncDialogOpenState();
   setConfigLoadedUI(false);
   $("logoutBtn").disabled = true;
   setUser(null);

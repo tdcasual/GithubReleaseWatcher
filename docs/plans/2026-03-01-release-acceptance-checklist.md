@@ -75,6 +75,7 @@ Notes:
 - 已在响应式模拟下验证布局修复：topbar 网格、筛选控件单列全宽、批量工具栏窄屏降为单列、repo 行控件纵向拉伸。
 - 已补充移动端交互优化：底部导航高亮当前区块 + 平滑锚点滚动；批量工具栏与 repo 行控件触控区域加大。
 - 已优化长表单对话框：移动端对话框内容可滚动，操作按钮区底部粘附，减少来回滚动成本。
+- 已补充弹窗打开态交互：打开弹窗时自动隐藏底部导航并锁定背景滚动，关闭后恢复，避免误触。
 - 待办：在 iOS Safari / Android Chrome 真机完成触控可用性勾选。
 - 执行脚本与模板：`docs/plans/2026-03-01-gate2-device-acceptance-kit.md`、`docs/plans/2026-03-01-gate2-device-acceptance-template.md`。
 
@@ -93,6 +94,7 @@ Notes:
 - 已实现对话框焦点回退：设置/新增仓库对话框关闭后回到触发控件（含关闭后回退到触发按钮兜底）。
 - 已补充仓库行交互控件 `aria-label`、折叠按钮 `aria-expanded/aria-controls` 语义、移动导航 `:focus-visible` 样式。
 - 已补充移动导航 `aria-current` 当前区块语义与滚动同步更新。
+- 已兼容 `prefers-reduced-motion`：移动导航锚点滚动在减少动效偏好下改为非动画跳转。
 - 待办：在桌面与移动端进行键盘流手工勾选确认。
 
 ---
@@ -148,6 +150,7 @@ Evidence notes:
 - 2026-03-01 12:08 CST rerun (after dialog focus-restore accessibility polish): same command set passed.
 - 2026-03-01 12:11 CST rerun (after aria semantics and focus-visible polish): same command set passed.
 - 2026-03-01 16:06 CST rerun (after mobile nav + dialog/touch ergonomics polish): same command set passed.
+- 2026-03-01 16:13 CST rerun (after modal-open nav/scroll guard + reduced-motion polish): same command set passed.
 - Follow-up: `urllib3` reported `NotOpenSSLWarning` on local Python runtime (`LibreSSL 2.8.3`); does not block current functional checks.
 
 ---

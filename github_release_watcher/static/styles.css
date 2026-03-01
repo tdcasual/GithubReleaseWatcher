@@ -48,6 +48,10 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+body.dialog-open {
+  overflow: hidden;
+}
+
 code {
   font-family: var(--mono);
   font-size: 0.95em;
@@ -703,6 +707,10 @@ select.input {
     padding: 14px 12px calc(74px + env(safe-area-inset-bottom));
   }
 
+  .toast {
+    bottom: calc(86px + env(safe-area-inset-bottom));
+  }
+
   .topbar {
     top: 0;
     border-radius: 12px;
@@ -859,6 +867,17 @@ select.input {
     border-radius: 14px;
     box-shadow: var(--shadow);
     z-index: 30;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+  }
+
+  body.dialog-open .mobile-nav {
+    opacity: 0;
+    transform: translateY(10px);
+    pointer-events: none;
+  }
+
+  body.dialog-open .toast {
+    bottom: calc(14px + env(safe-area-inset-bottom));
   }
 
   .mobile-nav-item {
@@ -883,5 +902,13 @@ select.input {
 @media (max-width: 420px) {
   .batch-tools {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section-body,
+  .mobile-nav,
+  .mobile-nav-item {
+    transition: none !important;
   }
 }
