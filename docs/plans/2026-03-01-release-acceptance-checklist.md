@@ -74,6 +74,7 @@ Checks:
 Notes:
 - 已在响应式模拟下验证布局修复：topbar 网格、筛选控件单列全宽、批量工具栏窄屏降为单列、repo 行控件纵向拉伸。
 - 已补充移动端交互优化：底部导航高亮当前区块 + 平滑锚点滚动；批量工具栏与 repo 行控件触控区域加大。
+- 已修复移动导航锚点一致性：点击“状态/仓库/活动（概览/版本/活动）”后，高亮状态与 URL hash 区块保持同步，避免偶发回跳。
 - 已优化长表单对话框：移动端对话框内容可滚动，操作按钮区底部粘附，减少来回滚动成本。
 - 已补充弹窗打开态交互：打开弹窗时自动隐藏底部导航并锁定背景滚动，关闭后恢复，避免误触。
 - 已增强移动端反馈可见性：批量/WebDAV/仓库运行提示在超出视口时自动滚动到可视区。
@@ -166,6 +167,7 @@ Evidence notes:
 - 2026-03-01 17:02 CST rerun (after index page logs auto-refresh scroll-context polish): same command set passed.
 - 2026-03-01 17:06 CST rerun (after repo page activity/releases auto-refresh scroll-context polish): same command set passed.
 - 2026-03-01 17:09 CST rerun (after acceptance status checker tooling integration): same command set passed.
+- 2026-03-01 17:55 CST rerun (after mobile nav anchor-state consistency fix): same command set passed.
 - Follow-up: `urllib3` reported `NotOpenSSLWarning` on local Python runtime (`LibreSSL 2.8.3`); does not block current functional checks.
 
 ---

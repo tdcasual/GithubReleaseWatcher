@@ -467,9 +467,12 @@ function setupMobileSectionNav() {
   if (!items.length) return;
   items.sort((a, b) => a.section.offsetTop - b.section.offsetTop);
 
-  const topOffset = () => {
+  const sectionScrollOffset = () => {
+    const cssOffsetRaw = getComputedStyle(document.documentElement).getPropertyValue("--section-scroll-offset");
+    const cssOffset = Number.parseFloat(cssOffsetRaw);
+    if (Number.isFinite(cssOffset) && cssOffset > 0) return Math.ceil(cssOffset);
     const topbar = document.querySelector(".topbar");
-    return Math.ceil((topbar?.getBoundingClientRect().height || 0) + 16);
+    return Math.ceil((topbar?.getBoundingClientRect().height || 0) + 12);
   };
 
   const setActive = (id) => {
@@ -484,7 +487,7 @@ function setupMobileSectionNav() {
   const scrollToSection = (id) => {
     const target = document.getElementById(id);
     if (!target) return;
-    const targetY = window.scrollY + target.getBoundingClientRect().top - topOffset();
+    const targetY = window.scrollY + target.getBoundingClientRect().top - sectionScrollOffset();
     window.scrollTo({ top: Math.max(0, targetY), behavior: prefersReducedMotion() ? "auto" : "smooth" });
     if (history.replaceState) history.replaceState(null, "", `#${id}`);
   };
@@ -500,7 +503,21 @@ function setupMobileSectionNav() {
   let ticking = false;
   const updateByScroll = () => {
     ticking = false;
-    const probeY = topOffset() + 24;
+    const offset = sectionScrollOffset();
+    const probeY = offset + 8;
+    const hashId = (location.hash || "").replace(/^#/, "");
+    if (hashId) {
+      const hashItem = items.find((x) => x.id === hashId);
+      if (hashItem) {
+        const rect = hashItem.section.getBoundingClientRect();
+        const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+        const hashVisibleTop = Math.max(offset + 64, vh * 0.55);
+        if (rect.top <= hashVisibleTop && rect.bottom > Math.min(offset - 32, 0)) {
+          setActive(hashItem.id);
+          return;
+        }
+      }
+    }
     let current = items[0];
     for (const item of items) {
       if (item.section.getBoundingClientRect().top <= probeY) current = item;
