@@ -39,6 +39,7 @@ scripts/qa/new_acceptance_packet.sh
 4. 生成门禁状态快照（可选严格模式）：
 
 ```bash
+scripts/qa/sync_acceptance_gates.sh
 scripts/qa/check_acceptance_status.sh --strict
 ```
 
