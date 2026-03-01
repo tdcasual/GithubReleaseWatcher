@@ -56,7 +56,8 @@ LATEST_FILE="artifacts/manual-qa/latest-run-dir"
 
 mkdir -p "$RUN_DIR"
 
-python3 watcher.py --config "$CONFIG_FILE" --web --web-host "$HOST" --web-port "$PORT" >"$LOG_FILE" 2>&1 &
+# Use nohup + closed stdin so process survives parent shell exit in automation environments.
+nohup python3 watcher.py --config "$CONFIG_FILE" --web --web-host "$HOST" --web-port "$PORT" >"$LOG_FILE" 2>&1 </dev/null &
 PID="$!"
 echo "$PID" > "$PID_FILE"
 echo "$RUN_DIR" > "$LATEST_FILE"

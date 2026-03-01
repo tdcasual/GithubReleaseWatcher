@@ -138,7 +138,7 @@ Notes:
 
 ## 7. Automated Regression Evidence
 
-Run time (UTC+8): 2026-03-01 18:24 CST
+Run time (UTC+8): 2026-03-01 18:42 CST
 
 Commands:
 
@@ -146,6 +146,7 @@ Commands:
 node --check github_release_watcher/static/app.js
 node --check github_release_watcher/static/repo.js
 python3 -m unittest tests.test_ui_mobile_accessibility -v
+python3 -m unittest tests.test_acceptance_bootstrap_detach -v
 python3 -m unittest tests.test_acceptance_gate_sync -v
 python3 -m unittest tests.test_auth_security tests.test_downloader_behavior tests.test_state_robustness tests.test_watcher_webdav_parallel tests.test_watcher_webdav_stats_safety tests.test_webapp_api_smoke tests.test_webdav_reliability -v
 ```
@@ -159,6 +160,7 @@ Evidence notes:
 - `node --check github_release_watcher/static/app.js` passed.
 - `node --check github_release_watcher/static/repo.js` passed.
 - `python3 -m unittest tests.test_ui_mobile_accessibility -v` passed (2 tests).
+- `python3 -m unittest tests.test_acceptance_bootstrap_detach -v` passed (1 test).
 - `python3 -m unittest tests.test_acceptance_gate_sync -v` passed (3 tests).
 - `python3 -m unittest tests.test_auth_security tests.test_downloader_behavior tests.test_state_robustness tests.test_watcher_webdav_parallel tests.test_watcher_webdav_stats_safety tests.test_webapp_api_smoke tests.test_webdav_reliability -v` passed (17 tests).
 - 2026-03-01 12:00 CST rerun (after batch-toolbar disabled-reason polish): same command set passed.
@@ -176,6 +178,7 @@ Evidence notes:
 - 2026-03-01 17:55 CST rerun (after mobile nav anchor-state consistency fix): same command set passed.
 - 2026-03-01 18:17 CST rerun (after muted contrast + viewport-fit=cover fixes): same command set + `test_ui_mobile_accessibility` passed.
 - 2026-03-01 18:24 CST rerun (after gate checklist auto-sync tooling): same command set + `test_ui_mobile_accessibility` + `test_acceptance_gate_sync` passed.
+- 2026-03-01 18:42 CST rerun (after bootstrap detach stability fix): same command set + `test_acceptance_bootstrap_detach` + detached-run smoke passed.
 - Follow-up: `urllib3` reported `NotOpenSSLWarning` on local Python runtime (`LibreSSL 2.8.3`); does not block current functional checks.
 
 ---

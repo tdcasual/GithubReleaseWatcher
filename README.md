@@ -173,6 +173,7 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
   - `scripts/qa/new_acceptance_packet.sh`（一键生成 Gate 2 + Gate 3 报告与总览导航）
   - `scripts/qa/sync_acceptance_gates.sh`（根据 Gate2/Gate3 报告自动同步发布清单勾选状态，支持 `--dry-run`）
   - `scripts/qa/check_acceptance_status.sh`（汇总清单与 Gate 报告状态，快速判断是否可发布）
+  - 说明：`manual_acceptance_bootstrap.sh` 已改为 detached 启动（`nohup`），在自动化 shell 下更稳定。
 
 ## 2026-03-01 收尾更新摘要
 
