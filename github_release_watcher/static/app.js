@@ -903,6 +903,26 @@ function formatStorageHealthTopRepos(repos, limit = 3) {
   return ranked;
 }
 
+function formatSyncCacheTopRepos(items, limit = 3) {
+  const list = Array.isArray(items) ? items : [];
+  const ranked = list
+    .map((item) => ({
+      repo: String(item?.repo || "").trim(),
+      stale: Number(item?.stale_files || 0),
+      missing: Number(item?.missing_files || 0),
+      pruned: Number(item?.pruned_files || 0),
+    }))
+    .filter((x) => x.repo && (x.stale > 0 || x.missing > 0 || x.pruned > 0))
+    .sort((a, b) => {
+      if (a.missing !== b.missing) return b.missing - a.missing;
+      if (a.stale !== b.stale) return b.stale - a.stale;
+      if (a.pruned !== b.pruned) return b.pruned - a.pruned;
+      return a.repo.localeCompare(b.repo);
+    })
+    .slice(0, Math.max(1, limit));
+  return ranked;
+}
+
 async function refreshStorageDiagnostics() {
   const capsEl = $("webdavCapabilitiesHint");
   const healthEl = $("storageHealthHint");
@@ -1680,14 +1700,34 @@ function wireEvents() {
     try {
       const data = await withAuth(() => API.post("/storage/sync-cache", { prune }));
       const totals = data.totals || {};
+      const items = Array.isArray(data.items) ? data.items : [];
       const pruned = Number(totals.pruned_files || 0);
-      hint.textContent = `缓存同步${prune ? "（已执行清理）" : ""}：检查 ${totals.cache_files_checked || 0} 个文件，发现 stale ${
+      const staleCount = Number(totals.stale_files || 0);
+      const missingCount = Number(totals.missing_files || 0);
+      const summary = `缓存同步${prune ? "（已执行清理）" : ""}：检查 ${totals.cache_files_checked || 0} 个文件，发现 stale ${
         totals.stale_files || 0
       } 个，缺失 ${totals.missing_files || 0} 个。`;
-      if (prune) {
-        hint.textContent += ` 已清理 ${pruned} 个。`;
+      const topRepos = formatSyncCacheTopRepos(items, 3);
+      const hasAnomaly = staleCount > 0 || missingCount > 0;
+      hint.className = hasAnomaly ? "hint danger" : "hint";
+      if (!topRepos.length) {
+        hint.textContent = `${summary}${prune ? ` 已清理 ${pruned} 个。` : ""} 异常仓库：无。`;
+      } else {
+        const topLinks = topRepos
+          .map((x) => {
+            const href = `/repo.html?repo=${encodeURIComponent(x.repo)}`;
+            const label = `${x.repo}(stale${x.stale}/缺失${x.missing}${prune ? `/清理${x.pruned}` : ""})`;
+            return `<a href="${href}">${escapeHtml(label)}</a>`;
+          })
+          .join("；");
+        hint.innerHTML = `${escapeHtml(summary)}${prune ? ` 已清理 ${pruned} 个。` : ""} 重点仓库：${topLinks}`;
       }
-      toast("缓存同步完成。", "ok");
+      if (prune) {
+        // Keep toast lightweight; detailed cleanup context is shown in hint.
+        toast(`缓存同步完成，已清理 ${pruned} 个。`, "ok");
+      } else {
+        toast("缓存同步完成。", "ok");
+      }
     } catch (e) {
       hint.className = "hint danger";
       hint.textContent = `缓存同步失败：${formatError(e)}`;
