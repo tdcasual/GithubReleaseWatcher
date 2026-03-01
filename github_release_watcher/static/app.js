@@ -68,6 +68,7 @@ let lastWebdavTest = null;
 let mustChangePassword = false;
 let lastStorageHealthTotals = null;
 let lastStorageHealthAt = 0;
+let selectedRepoKeys = new Set();
 
 const $ = (id) => document.getElementById(id);
 
@@ -304,45 +305,14 @@ function repoDraft(key) {
   return draft.repos[key];
 }
 
-function renderTypeChips(container, selected, onChange) {
-  const list = Array.isArray(selected) ? selected : [];
-  const selectedSet = new Set(list);
-  const customKeys = [];
-  for (const k of list) {
-    if (!PRESET_TYPE_MAP.has(k) && !customKeys.includes(k)) customKeys.push(k);
-  }
-
-  const keys = [...PRESET_TYPES.map((t) => t.key), ...customKeys];
-  container.innerHTML = "";
-  for (const key of keys) {
-    const label = document.createElement("label");
-    label.className = "chip";
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.checked = selectedSet.has(key);
-    input.addEventListener("change", () => onChange(key, input.checked));
-    label.appendChild(input);
-    const span = document.createElement("span");
-    span.textContent = PRESET_TYPE_MAP.get(key) || `.${key}`;
-    label.appendChild(span);
-    container.appendChild(label);
-  }
-}
-
-function renderRepos() {
-  const wrap = $("repos");
-  wrap.innerHTML = "";
-  const countHint = $("repoCountHint");
+function getRepoListView() {
   if (!config || !Array.isArray(config.repos)) {
-    if (countHint) countHint.textContent = "";
-    return;
+    return { repos: [], filterText: "", total: 0 };
   }
-
   const filterText = String($("repoFilterInput")?.value || "")
     .trim()
     .toLowerCase();
   const sortMode = String($("repoSortSelect")?.value || "default").trim();
-
   let repos = Array.from(config.repos);
   if (filterText) {
     repos = repos.filter((r) => {
@@ -389,8 +359,104 @@ function renderRepos() {
     });
   }
 
+  return { repos, filterText, total: config.repos.length };
+}
+
+function getVisibleRepoKeys() {
+  const view = getRepoListView();
+  const keys = [];
+  for (const repo of view.repos) {
+    const key = String(repo?.key || "");
+    if (key) keys.push(key);
+  }
+  return keys;
+}
+
+function syncSelectedReposWithConfig() {
+  const existing = new Set(Array.isArray(config?.repos) ? config.repos.map((r) => String(r?.key || "")) : []);
+  const next = new Set();
+  for (const key of selectedRepoKeys) {
+    if (existing.has(key)) next.add(key);
+  }
+  selectedRepoKeys = next;
+}
+
+function getSelectedRepoKeys() {
+  syncSelectedReposWithConfig();
+  return Array.from(selectedRepoKeys);
+}
+
+function setBatchActionHint(message, kind) {
+  const el = $("batchActionHint");
+  if (!el) return;
+  el.className = kind === "danger" ? "hint danger" : "hint";
+  el.textContent = String(message || "");
+}
+
+function updateBatchControlsUI() {
+  const countEl = $("batchSelectedCount");
+  const selectVisibleBtn = $("batchSelectVisibleBtn");
+  const invertVisibleBtn = $("batchInvertVisibleBtn");
+  const runBtn = $("batchRunBtn");
+  const enableBtn = $("batchEnableBtn");
+  const disableBtn = $("batchDisableBtn");
+  const clearBtn = $("batchClearBtn");
+  const selected = getSelectedRepoKeys();
+  const visible = getVisibleRepoKeys();
+  const count = selected.length;
+  if (countEl) countEl.textContent = `已选 ${count} 个仓库（当前筛选 ${visible.length} 个）`;
+  const disabled = !config || count <= 0;
+  const visibleDisabled = !config || visible.length <= 0;
+  if (selectVisibleBtn) selectVisibleBtn.disabled = isBusy(selectVisibleBtn) || visibleDisabled;
+  if (invertVisibleBtn) invertVisibleBtn.disabled = isBusy(invertVisibleBtn) || visibleDisabled;
+  if (runBtn) runBtn.disabled = isBusy(runBtn) || disabled;
+  if (enableBtn) enableBtn.disabled = isBusy(enableBtn) || disabled;
+  if (disableBtn) disableBtn.disabled = isBusy(disableBtn) || disabled;
+  if (clearBtn) clearBtn.disabled = !config || count <= 0;
+}
+
+function renderTypeChips(container, selected, onChange) {
+  const list = Array.isArray(selected) ? selected : [];
+  const selectedSet = new Set(list);
+  const customKeys = [];
+  for (const k of list) {
+    if (!PRESET_TYPE_MAP.has(k) && !customKeys.includes(k)) customKeys.push(k);
+  }
+
+  const keys = [...PRESET_TYPES.map((t) => t.key), ...customKeys];
+  container.innerHTML = "";
+  for (const key of keys) {
+    const label = document.createElement("label");
+    label.className = "chip";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = selectedSet.has(key);
+    input.addEventListener("change", () => onChange(key, input.checked));
+    label.appendChild(input);
+    const span = document.createElement("span");
+    span.textContent = PRESET_TYPE_MAP.get(key) || `.${key}`;
+    label.appendChild(span);
+    container.appendChild(label);
+  }
+}
+
+function renderRepos() {
+  const wrap = $("repos");
+  wrap.innerHTML = "";
+  const countHint = $("repoCountHint");
+  if (!config || !Array.isArray(config.repos)) {
+    if (countHint) countHint.textContent = "";
+    updateBatchControlsUI();
+    return;
+  }
+  syncSelectedReposWithConfig();
+  const view = getRepoListView();
+  const repos = view.repos;
+  const filterText = view.filterText;
+  const total = view.total;
+
   if (countHint) {
-    const suffix = filterText ? `（筛选：${repos.length}/${config.repos.length}）` : `（共 ${config.repos.length}）`;
+    const suffix = filterText ? `（筛选：${repos.length}/${total}）` : `（共 ${total}）`;
     countHint.textContent = suffix;
   }
 
@@ -424,8 +490,23 @@ function renderRepos() {
     title.appendChild(nameBox);
 
     const right = document.createElement("div");
-    right.className = "inline";
-    right.style.gap = "10px";
+    right.className = "repo-actions";
+
+    const selectWrap = document.createElement("label");
+    selectWrap.className = "repo-select";
+    const selectInput = document.createElement("input");
+    selectInput.type = "checkbox";
+    selectInput.checked = selectedRepoKeys.has(repo.key);
+    selectInput.addEventListener("change", () => {
+      if (selectInput.checked) selectedRepoKeys.add(repo.key);
+      else selectedRepoKeys.delete(repo.key);
+      updateBatchControlsUI();
+    });
+    const selectText = document.createElement("span");
+    selectText.className = "muted";
+    selectText.textContent = "选中";
+    selectWrap.appendChild(selectInput);
+    selectWrap.appendChild(selectText);
 
     const repoPatch = draft?.repos?.[repo.key] || {};
     const enabledValue = repoPatch.enabled ?? repo.enabled;
@@ -481,6 +562,7 @@ function renderRepos() {
     enabledWrap.appendChild(sw);
 
     head.appendChild(title);
+    right.appendChild(selectWrap);
     right.appendChild(activityBtn);
     right.appendChild(runBtn);
     right.appendChild(enabledWrap);
@@ -590,6 +672,7 @@ function renderRepos() {
 
     wrap.appendChild(row);
   }
+  updateBatchControlsUI();
 }
 
 function materializeDraftFromConfig() {
@@ -683,6 +766,7 @@ function setConfigLoadedUI(loaded) {
   $("repoSortSelect").disabled = !loaded;
   setDirty(dirty);
   renderSecurityBanner();
+  updateBatchControlsUI();
 }
 
 async function loadAll() {
@@ -882,6 +966,107 @@ async function runNow() {
   } finally {
     setButtonBusy(btn, false);
     await refreshStatusSafe().catch(() => {});
+  }
+}
+
+function batchSelectVisible() {
+  const visible = getVisibleRepoKeys();
+  if (!visible.length) {
+    setBatchActionHint("当前筛选结果为空，无可选仓库。", "danger");
+    return;
+  }
+  let added = 0;
+  for (const key of visible) {
+    if (selectedRepoKeys.has(key)) continue;
+    selectedRepoKeys.add(key);
+    added += 1;
+  }
+  const msg = added > 0 ? `已新增选择 ${added} 个仓库。` : `当前筛选内 ${visible.length} 个仓库已全部选中。`;
+  setBatchActionHint(msg, "");
+  renderRepos();
+}
+
+function batchInvertVisible() {
+  const visible = getVisibleRepoKeys();
+  if (!visible.length) {
+    setBatchActionHint("当前筛选结果为空，无法反选。", "danger");
+    return;
+  }
+  let selectedNow = 0;
+  let unselectedNow = 0;
+  for (const key of visible) {
+    if (selectedRepoKeys.has(key)) {
+      selectedRepoKeys.delete(key);
+      unselectedNow += 1;
+    } else {
+      selectedRepoKeys.add(key);
+      selectedNow += 1;
+    }
+  }
+  const msg = `反选完成：选中 ${selectedNow} 个，取消 ${unselectedNow} 个。`;
+  setBatchActionHint(msg, "");
+  renderRepos();
+}
+
+async function batchSetEnabled(enabled, triggerBtn) {
+  const selected = getSelectedRepoKeys();
+  if (!selected.length) {
+    setBatchActionHint("请先选择至少一个仓库。", "danger");
+    toast("请先选择至少一个仓库。", "warn");
+    return;
+  }
+  setBatchActionHint("", "");
+  for (const key of selected) {
+    repoDraft(key).enabled = !!enabled;
+  }
+  setDirty(true);
+  renderRepos();
+  const ok = await saveSettings({ busyButtons: triggerBtn ? [triggerBtn] : [] });
+  if (!ok) {
+    setBatchActionHint(`批量${enabled ? "启用" : "停用"}失败。`, "danger");
+    return;
+  }
+  const msg = `批量${enabled ? "启用" : "停用"}完成：${selected.length} 个仓库。`;
+  setBatchActionHint(msg, "");
+  toast(msg, "ok");
+}
+
+async function batchRunSelected(triggerBtn) {
+  const selected = getSelectedRepoKeys();
+  if (!selected.length) {
+    setBatchActionHint("请先选择至少一个仓库。", "danger");
+    toast("请先选择至少一个仓库。", "warn");
+    return;
+  }
+  if (mustChangePassword) {
+    renderSecurityBanner();
+    setBatchActionHint("当前账号需先修改密码，已阻止批量触发。", "danger");
+    toast("当前账号需先修改密码，请先在设置中更新账号密码。", "warn");
+    return;
+  }
+  setBatchActionHint("", "");
+  setButtonBusy(triggerBtn, true, "触发中…");
+  try {
+    const res = await withAuth(() => API.post("/run", { repos: selected }));
+    if (res.error) {
+      const msg = `批量触发失败：${res.error}`;
+      setBatchActionHint(msg, "danger");
+      toast(msg, "bad");
+      return;
+    }
+    const msg = res.queued
+      ? `批量检查已入队：${selected.length} 个仓库。`
+      : "已有任务在运行或队列中，本次批量请求未入队。";
+    setBatchActionHint(msg, "");
+    toast(msg, res.queued ? "ok" : "warn");
+  } catch (e) {
+    const msg = `批量触发失败：${formatError(e)}`;
+    setBatchActionHint(msg, "danger");
+    toast(msg, "bad");
+  } finally {
+    setButtonBusy(triggerBtn, false);
+    await refreshStatusSafe().catch(() => {});
+    updateBatchControlsUI();
   }
 }
 
@@ -1224,6 +1409,16 @@ function wireEvents() {
   $("repoSortSelect").addEventListener("change", () => renderRepos());
   $("addRepoBtn").addEventListener("click", openRepoDialog);
   $("copyLogsBtn").addEventListener("click", copyLogs);
+  $("batchSelectVisibleBtn").addEventListener("click", batchSelectVisible);
+  $("batchInvertVisibleBtn").addEventListener("click", batchInvertVisible);
+  $("batchRunBtn").addEventListener("click", async () => batchRunSelected($("batchRunBtn")));
+  $("batchEnableBtn").addEventListener("click", async () => batchSetEnabled(true, $("batchEnableBtn")));
+  $("batchDisableBtn").addEventListener("click", async () => batchSetEnabled(false, $("batchDisableBtn")));
+  $("batchClearBtn").addEventListener("click", () => {
+    selectedRepoKeys.clear();
+    setBatchActionHint("已清空选择。", "");
+    renderRepos();
+  });
 
   const settingsForm = $("settingsDialog").querySelector("form");
   settingsForm?.addEventListener("submit", (e) => e.preventDefault());

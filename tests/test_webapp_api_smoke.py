@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import http.client
 import json
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
-from github_release_watcher.webapp import WatcherService
+from github_release_watcher.webapp import AuthService, Handler, WatcherService, _Server
 
 
 class WebappApiSmokeTests(unittest.TestCase):
-    def _write_base_config(self, base: Path, *, storage_mode: str = "local") -> Path:
+    def _write_base_config(self, base: Path, *, storage_mode: str = "local", repos: list[str] | None = None) -> Path:
         cfg_path = base / "config.toml"
+        repo_list = repos if isinstance(repos, list) and repos else ["owner/repo"]
         lines = [
             "interval_seconds = 60",
             'download_dir = "./downloads"',
@@ -23,12 +27,20 @@ class WebappApiSmokeTests(unittest.TestCase):
             "[storage.webdav]",
             'base_url = "https://example.com/dav/"',
             "",
-            "[[repos]]",
-            'name = "owner/repo"',
-            "",
         ]
+        for spec in repo_list:
+            lines.extend(["[[repos]]", f'name = "{spec}"', ""])
         cfg_path.write_text("\n".join(lines), encoding="utf-8")
         return cfg_path
+
+    def _start_server_with_session(self, app: WatcherService) -> tuple[_Server, threading.Thread, str]:
+        auth = AuthService(app)
+        token = auth.create_session(app.auth_username())
+        server = _Server(("127.0.0.1", 0), Handler, app=app, ui=False, auth=auth)
+        t = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True)
+        t.start()
+        time.sleep(0.02)
+        return server, t, token
 
     def test_preview_cleanup_returns_old_tags(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -155,6 +167,61 @@ class WebappApiSmokeTests(unittest.TestCase):
 
             self.assertEqual(result["totals"]["pruned_files"], 1)
             self.assertFalse(stale.exists())
+
+    def test_enqueue_run_once_supports_batch_repos(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            cfg_path = self._write_base_config(base, repos=["owner/repo", "owner/another"])
+            app = WatcherService(cfg_path)
+
+            queued = app.enqueue_run_once(source="api", repos=["owner/repo", "owner/another"])
+
+            self.assertTrue(queued)
+            task = app._queue.get_nowait()  # type: ignore[attr-defined]
+            self.assertEqual(task.get("type"), "run_once")
+            self.assertEqual(task.get("repo_keys"), ["owner/repo", "owner/another"])
+
+    def test_enqueue_run_once_batch_repos_unknown_repo_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            cfg_path = self._write_base_config(base, repos=["owner/repo"])
+            app = WatcherService(cfg_path)
+
+            with self.assertRaises(ValueError):
+                app.enqueue_run_once(source="api", repos=["owner/repo", "owner/missing"])
+
+    def test_run_api_rejects_null_repos_field(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            cfg_path = self._write_base_config(base, repos=["owner/repo"])
+            app = WatcherService(cfg_path)
+            app.set_credentials("tester", "pass")
+            server, thread, token = self._start_server_with_session(app)
+            conn: http.client.HTTPConnection | None = None
+            try:
+                host, port = server.server_address
+                conn = http.client.HTTPConnection(str(host), int(port), timeout=3)
+                conn.request(
+                    "POST",
+                    "/api/v1/run",
+                    body=json.dumps({"repos": None}),
+                    headers={
+                        "Content-Type": "application/json",
+                        "Cookie": f"grw_session={token}",
+                    },
+                )
+                res = conn.getresponse()
+                body = res.read().decode("utf-8")
+                payload = json.loads(body)
+                self.assertEqual(res.status, 400)
+                self.assertEqual(payload.get("error"), "repos must be a list")
+            finally:
+                if conn is not None:
+                    conn.close()
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                app.shutdown()
 
 
 if __name__ == "__main__":

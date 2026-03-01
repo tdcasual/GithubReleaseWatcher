@@ -393,6 +393,18 @@ select.input {
   gap: 10px;
 }
 
+.batch-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.batch-tools > .muted {
+  flex: 1 1 100%;
+}
+
 .repo {
   border: 1px solid var(--border);
   background: transparent;
@@ -410,6 +422,20 @@ select.input {
 
 .repo-title {
   min-width: 0;
+}
+
+.repo-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.repo-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .repo-name {
@@ -711,6 +737,30 @@ select.input {
     width: 100%;
     justify-content: flex-start;
     flex-wrap: wrap;
+  }
+
+  .batch-tools {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  #batchSelectedCount {
+    grid-column: 1 / -1;
+  }
+
+  .batch-tools .btn {
+    width: 100%;
+  }
+
+  .repo-actions {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .repo-select {
+    margin-right: auto;
   }
 
   .mobile-nav {

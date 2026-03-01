@@ -606,15 +606,36 @@ class WatcherService:
         _write_json_atomic(self._overrides_path, overrides)
         self.reload_config()
 
-    def enqueue_run_once(self, *, source: str = "manual", repo: str | None = None) -> bool:
+    def enqueue_run_once(
+        self,
+        *,
+        source: str = "manual",
+        repo: str | None = None,
+        repos: list[str] | None = None,
+    ) -> bool:
+        if repo is not None and repos is not None:
+            raise ValueError("repo and repos cannot be set together")
+
         repo_key: str | None = None
+        repo_keys: list[str] | None = None
         if repo is not None:
             if not isinstance(repo, str) or not repo.strip():
                 raise ValueError("repo must be a non-empty string")
             repo_key = _repo_key_from_spec(repo)
+        if repos is not None:
+            if not isinstance(repos, list) or not repos:
+                raise ValueError("repos must be a non-empty list")
+            normalized: list[str] = []
+            for item in repos:
+                if not isinstance(item, str) or not item.strip():
+                    raise ValueError("repos items must be non-empty strings")
+                key = _repo_key_from_spec(item)
+                if key not in normalized:
+                    normalized.append(key)
+            repo_keys = normalized
 
         with self._lock:
-            if repo_key is not None:
+            if repo_key is not None or repo_keys is not None:
                 config = self._config
                 if config is None:
                     raise RuntimeError("Config not loaded")
@@ -624,17 +645,27 @@ class WatcherService:
                         existing.add(_repo_key_from_spec(repo_cfg.name))
                     except Exception:
                         existing.add(repo_cfg.name)
-                if repo_key not in existing:
+                if repo_key is not None and repo_key not in existing:
                     raise ValueError("unknown repo")
+                if repo_keys is not None:
+                    for key in repo_keys:
+                        if key not in existing:
+                            raise ValueError("unknown repo")
 
             if self._run_requested or self._run_in_progress:
                 return False
             self._run_requested = True
-            self._queue.put({"type": "run_once", "repo_key": repo_key})
+            task: dict[str, Any] = {"type": "run_once"}
+            if repo_keys is not None:
+                task["repo_keys"] = list(repo_keys)
+            else:
+                task["repo_key"] = repo_key
+            self._queue.put(task)
             self._last_run = {
                 "id": self._run_id + 1,
                 "source": source,
                 "repo": repo_key,
+                "repos": list(repo_keys) if repo_keys is not None else None,
                 "queued_at": _utc_now_iso(),
                 "started_at": None,
                 "finished_at": None,
@@ -1287,9 +1318,11 @@ class WatcherService:
                 continue
 
             if task.get("type") == "run_once":
-                self._do_run_once(task.get("repo_key"))
+                raw_repo_keys = task.get("repo_keys")
+                repo_keys = raw_repo_keys if isinstance(raw_repo_keys, list) else None
+                self._do_run_once(task.get("repo_key"), repo_keys=repo_keys)
 
-    def _do_run_once(self, repo_key: str | None) -> None:
+    def _do_run_once(self, repo_key: str | None, *, repo_keys: list[str] | None = None) -> None:
         with self._lock:
             self._run_requested = False
             if self._run_in_progress:
@@ -1308,7 +1341,25 @@ class WatcherService:
         try:
             if config_snapshot is None:
                 raise RuntimeError("Config not loaded")
-            if repo_key is not None:
+            if repo_key is not None and repo_keys is not None:
+                raise ValueError("invalid run request")
+            if repo_keys is not None:
+                requested = set(repo_keys)
+                filtered: list[RepoConfig] = []
+                seen: set[str] = set()
+                for repo_cfg in config_snapshot.repos:
+                    try:
+                        key = _repo_key_from_spec(repo_cfg.name)
+                    except Exception:
+                        key = repo_cfg.name
+                    if key in requested:
+                        filtered.append(repo_cfg)
+                        seen.add(key)
+                if not filtered or seen != requested:
+                    raise ValueError("unknown repo")
+                config_snapshot.repos = filtered
+                processed_keys = [k for k in repo_keys if k in seen]
+            elif repo_key is not None:
                 filtered: list[RepoConfig] = []
                 for repo_cfg in config_snapshot.repos:
                     try:
@@ -1811,8 +1862,16 @@ class Handler(BaseHTTPRequestHandler):
             if payload is None:
                 return
             repo = payload.get("repo")
+            repos = payload.get("repos")
+            if "repos" in payload and not isinstance(repos, list):
+                self._send_json({"error": "repos must be a list"}, status=HTTPStatus.BAD_REQUEST)
+                return
             try:
-                queued = self.server.app.enqueue_run_once(source="api", repo=repo if repo is not None else None)
+                queued = self.server.app.enqueue_run_once(
+                    source="api",
+                    repo=repo if repo is not None else None,
+                    repos=repos if isinstance(repos, list) else None,
+                )
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
                 return

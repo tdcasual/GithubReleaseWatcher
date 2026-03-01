@@ -67,7 +67,7 @@ python3 watcher.py --config config.toml --web --no-ui
 - `POST /api/v1/login`：登录（默认 `admin/admin`，成功后设置 Cookie 会话）
 - `POST /api/v1/logout`：退出登录
 - `GET /api/v1/status`：运行状态、最近一次执行结果、当前配置（脱敏）
-- `POST /api/v1/run`：触发一次检查/下载（可传 `{"repo":"owner/repo"}` 仅执行单个仓库）
+- `POST /api/v1/run`：触发一次检查/下载（可传 `{"repo":"owner/repo"}` 执行单仓库，或 `{"repos":["owner/repo","foo/bar"]}` 批量执行）
 - `PUT /api/v1/settings`：更新运行配置（写入 `config.override.json`）
 - `PUT /api/v1/scheduler`：开启/关闭自动轮询
 - `GET /api/v1/repos`：仓库列表（包含统计、下次检查时间、推荐间隔）
@@ -80,6 +80,7 @@ python3 watcher.py --config config.toml --web --no-ui
 - `POST /api/v1/cleanup/preview`：预演清理结果（不实际删除）
 - Web 页面：
   - 首页「活动」：仅展示下载/清理等关键动作（全局）
+  - 首页「仓库与资产规则」支持按筛选结果批量选择（全选/反选）并批量检查、启停
   - 仓库页「活动」：每个仓库独立记录检查/下载/清理等事件（`/repo.html?repo=owner/repo`）
   - 完整日志默认写入配置同目录的 `watcher.log`
 
