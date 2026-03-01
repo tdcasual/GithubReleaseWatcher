@@ -312,6 +312,7 @@ function getRepoListView() {
   const filterText = String($("repoFilterInput")?.value || "")
     .trim()
     .toLowerCase();
+  const stateFilter = String($("repoStateFilterSelect")?.value || "all").trim();
   const sortMode = String($("repoSortSelect")?.value || "default").trim();
   let repos = Array.from(config.repos);
   if (filterText) {
@@ -319,6 +320,20 @@ function getRepoListView() {
       const key = String(r?.key || "").toLowerCase();
       const name = String(r?.name || "").toLowerCase();
       return key.includes(filterText) || name.includes(filterText);
+    });
+  }
+  if (stateFilter !== "all") {
+    repos = repos.filter((r) => {
+      const key = String(r?.key || "");
+      const enabled = isRepoEnabledForRun(key);
+      if (stateFilter === "enabled") return enabled;
+      if (stateFilter === "disabled") return !enabled;
+      if (stateFilter === "error") return isRepoInErrorState(key);
+      if (stateFilter === "network_error") {
+        const summary = repoSummaryByKey.get(key);
+        return summary?.stats?.last_check_ok === false && summary?.stats?.last_error_type === "network";
+      }
+      return true;
     });
   }
 
@@ -359,7 +374,7 @@ function getRepoListView() {
     });
   }
 
-  return { repos, filterText, total: config.repos.length };
+  return { repos, filterText, stateFilter, total: config.repos.length };
 }
 
 function getVisibleRepoKeys() {
@@ -479,10 +494,20 @@ function renderRepos() {
   const view = getRepoListView();
   const repos = view.repos;
   const filterText = view.filterText;
+  const stateFilter = view.stateFilter;
   const total = view.total;
 
   if (countHint) {
-    const suffix = filterText ? `（筛选：${repos.length}/${total}）` : `（共 ${total}）`;
+    const stateLabelMap = {
+      all: "全部",
+      enabled: "启用",
+      disabled: "停用",
+      error: "异常",
+      network_error: "网络异常",
+    };
+    const stateLabel = stateLabelMap[stateFilter] || "全部";
+    const hasFilter = !!filterText || stateFilter !== "all";
+    const suffix = hasFilter ? `（筛选：${repos.length}/${total}，状态：${stateLabel}）` : `（共 ${total}）`;
     countHint.textContent = suffix;
   }
 
@@ -789,6 +814,7 @@ function setConfigLoadedUI(loaded) {
   $("intervalInput").disabled = !loaded;
   $("keepLastInput").disabled = !loaded;
   $("repoFilterInput").disabled = !loaded;
+  $("repoStateFilterSelect").disabled = !loaded;
   $("repoSortSelect").disabled = !loaded;
   setDirty(dirty);
   renderSecurityBanner();
@@ -1498,6 +1524,7 @@ function wireEvents() {
   });
   $("intervalInput").addEventListener("input", () => setDirty(true));
   $("repoFilterInput").addEventListener("input", () => renderRepos());
+  $("repoStateFilterSelect").addEventListener("change", () => renderRepos());
   $("repoSortSelect").addEventListener("change", () => renderRepos());
   $("addRepoBtn").addEventListener("click", openRepoDialog);
   $("copyLogsBtn").addEventListener("click", copyLogs);

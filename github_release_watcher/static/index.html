@@ -102,6 +102,13 @@
             <div class="card-actions">
               <div class="inline" style="gap: 8px; flex-wrap: wrap">
                 <input id="repoFilterInput" class="input sm" placeholder="搜索 owner/repo" />
+                <select id="repoStateFilterSelect" class="input sm" aria-label="状态筛选">
+                  <option value="all">全部状态</option>
+                  <option value="enabled">仅启用</option>
+                  <option value="disabled">仅停用</option>
+                  <option value="error">仅异常</option>
+                  <option value="network_error">仅网络异常</option>
+                </select>
                 <select id="repoSortSelect" class="input sm" aria-label="排序">
                   <option value="default">默认排序</option>
                   <option value="status">错误优先</option>
