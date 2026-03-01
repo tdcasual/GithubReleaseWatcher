@@ -78,6 +78,8 @@ Notes:
 - 已补充弹窗打开态交互：打开弹窗时自动隐藏底部导航并锁定背景滚动，关闭后恢复，避免误触。
 - 已增强移动端反馈可见性：批量/WebDAV/仓库运行提示在超出视口时自动滚动到可视区。
 - 已将移动端输入控件字号提升到 16px，降低 iOS Safari 自动放大干扰。
+- 已增加日志区触控可用性提示与边界强化（可滚动提示 + 内阴影边界 + 惯性滚动优化）。
+- 已增强粗指针设备按压反馈（按钮按压缩放/亮度反馈），降低点击不确定感。
 - 待办：在 iOS Safari / Android Chrome 真机完成触控可用性勾选。
 - 执行脚本与模板：`docs/plans/2026-03-01-gate2-device-acceptance-kit.md`、`docs/plans/2026-03-01-gate2-device-acceptance-template.md`。
 
@@ -154,6 +156,7 @@ Evidence notes:
 - 2026-03-01 16:06 CST rerun (after mobile nav + dialog/touch ergonomics polish): same command set passed.
 - 2026-03-01 16:13 CST rerun (after modal-open nav/scroll guard + reduced-motion polish): same command set passed.
 - 2026-03-01 16:38 CST rerun (after mobile hint auto-reveal + iOS input-size polish): same command set passed.
+- 2026-03-01 16:49 CST rerun (after logs scroll hint + coarse-pointer press feedback polish): same command set passed.
 - Follow-up: `urllib3` reported `NotOpenSSLWarning` on local Python runtime (`LibreSSL 2.8.3`); does not block current functional checks.
 
 ---

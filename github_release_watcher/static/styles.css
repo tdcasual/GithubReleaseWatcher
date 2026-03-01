@@ -488,10 +488,25 @@ select.input {
   padding: 12px;
   overflow: auto;
   max-height: 320px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.05), inset 0 -1px 0 rgba(0, 0, 0, 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  .logs {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+  }
+}
+
+.logs-scroll-hint {
+  display: none;
+  font-size: 11px;
+  opacity: 0.92;
 }
 
 .footer {
@@ -665,6 +680,15 @@ select.input {
   .btn {
     min-height: 40px;
     padding: 10px 12px;
+    transition: transform 0.08s ease, filter 0.08s ease, background 0.08s ease;
+  }
+
+  .btn:active {
+    transform: translateY(0.5px) scale(0.985);
+  }
+
+  .btn.primary:active {
+    filter: brightness(0.95);
   }
 
   .chip {
@@ -761,6 +785,10 @@ select.input {
 
   .logs {
     max-height: 260px;
+  }
+
+  .logs-scroll-hint {
+    display: block;
   }
 
   .dialog {
