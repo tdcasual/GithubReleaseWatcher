@@ -161,6 +161,28 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 - 收尾执行计划：`docs/plans/2026-03-01-release-polish-plan.md`
 - 发布验收清单：`docs/plans/2026-03-01-release-acceptance-checklist.md`
 
+## 2026-03-01 收尾更新摘要
+
+- UI 与交互：
+  - 首页批量工具栏支持“全选/反选当前筛选”“选中启用”“选中异常”“选中缓存异常”。
+  - 状态卡新增“上次执行范围”（全量/单仓库/批量 + 触发来源）。
+  - 批量按钮在禁用时给出明确原因，降低误操作与理解成本。
+- 移动端 UI：
+  - topbar 改为紧凑网格布局，筛选控件在窄屏自动改单列全宽。
+  - 批量工具栏在 `<=640px` 两列排布，在 `<=420px` 自动降为单列。
+  - repo 行操作区改为可换行并优先保障关键按钮可触达。
+- WebDAV 能力与诊断：
+  - “同步缓存”结果展示异常仓库 Top，并支持直达仓库活动页。
+  - 新增“仅缓存异常”筛选与对应批量选择，并加前置条件守卫（WebDAV 模式 + 已有同步快照）。
+- 可访问性基线：
+  - 关键动态提示区域补齐 `aria-live/role=status`。
+  - 设置/新增仓库对话框关闭后恢复焦点到触发控件（含兜底）。
+  - 仓库行交互控件补充 `aria-label`，仓库页折叠按钮补充 `aria-expanded/aria-controls`，移动导航补充 `:focus-visible`。
+
+发布前仍需人工完成：
+- iOS Safari / Android Chrome 真机触控与布局验收。
+- WebDAV 关键链路端到端人工走查（测试连接 -> 能力探测 -> 同步缓存 -> 缓存异常筛选/选中 -> 批量动作）。
+
 ## 目录结构
 
 默认会下载到 `download_dir/<owner>/<repo>/<tag>/`，例如：
