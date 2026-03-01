@@ -42,6 +42,7 @@ let loginPromise = null;
 let repoKey = null;
 let releasesCount = null;
 let recentDeletedTags = [];
+let mustChangePassword = false;
 
 function isoToLocal(iso) {
   if (!iso) return "-";
@@ -98,6 +99,26 @@ function setButtonBusy(btn, busy, busyText) {
     delete btn.dataset.prevDisabled;
     delete btn.dataset.prevText;
   }
+}
+
+function formatApiError(codeOrMessage) {
+  const raw = String(codeOrMessage || "");
+  if (raw === "rate_limited") return "登录过于频繁，请稍后再试。";
+  if (raw === "password_change_required") return "请先在主页面设置中修改默认账号密码。";
+  return raw || "未知错误";
+}
+
+function renderSecurityBanner() {
+  const el = $("securityBanner");
+  if (!el) return;
+  if (!mustChangePassword) {
+    el.classList.add("hidden");
+    el.textContent = "";
+    return;
+  }
+  el.classList.remove("hidden");
+  el.innerHTML = '安全限制：当前账号需先修改密码，POST/PUT 操作将被拒绝。<a href="/">前往主页设置</a>。';
+  buildBadge("需先改密", "bad");
 }
 
 function updateReleaseStatsHint() {
@@ -164,9 +185,15 @@ async function startLoginFlow(message) {
         });
         const res = await resp.json().catch(() => ({}));
         if (!resp.ok || res.error) {
-          $("loginError").textContent = "账号或密码错误。";
+          if (res.error === "rate_limited" || resp.status === 429) {
+            $("loginError").textContent = "登录过于频繁，请稍后再试。";
+          } else {
+            $("loginError").textContent = "账号或密码错误。";
+          }
           return;
         }
+        mustChangePassword = !!res?.user?.must_change_password;
+        renderSecurityBanner();
         onDone();
       } catch (err) {
         $("loginError").textContent = String(err?.message || err);
@@ -178,12 +205,17 @@ async function startLoginFlow(message) {
 
 async function requireLogin() {
   try {
-    await API.get("/me");
+    const me = await API.get("/me");
+    mustChangePassword = !!me?.user?.must_change_password;
+    renderSecurityBanner();
     return;
   } catch (e) {
     if (e?.code !== "unauthorized") throw e;
   }
   await startLoginFlow();
+  const me = await API.get("/me");
+  mustChangePassword = !!me?.user?.must_change_password;
+  renderSecurityBanner();
 }
 
 function parseRepoKey() {
@@ -214,6 +246,9 @@ async function loadSummary() {
   $("cleanupTotal").textContent = String(stats.cleanup_tags_total ?? 0);
   $("downloadedReleasesTotal").textContent = String(info.downloaded_releases_total ?? 0);
   $("downloadErrorsTotal").textContent = String(stats.download_errors_total ?? 0);
+  $("uploadRetryTotal").textContent = String(stats.upload_retry_total ?? 0);
+  $("uploadVerifyFailedTotal").textContent = String(stats.upload_verify_failed_total ?? 0);
+  $("uploadQueueDepth").textContent = String(stats.upload_queue_depth ?? 0);
 
   const median = update.median_interval_seconds;
   const mean = update.mean_interval_seconds;
@@ -221,6 +256,7 @@ async function loadSummary() {
   $("updateHint").textContent = `更新频率统计：median=${secondsToHuman(median)}，mean=${secondsToHuman(mean)}（样本 ${sample}）。`;
 
   buildBadge(stats.last_check_ok ? "正常" : stats.last_check_ok === false ? "上次有错误" : "未知", stats.last_check_ok ? "ok" : "warn");
+  if (mustChangePassword) renderSecurityBanner();
 
   const lastErr = String(stats.last_error || "").trim();
   if (lastErr) {
@@ -289,15 +325,41 @@ async function copyText(text) {
   }
 }
 
+function initSectionToggles() {
+  const isMobile = window.matchMedia("(max-width: 640px)").matches;
+  for (const btn of document.querySelectorAll(".section-toggle")) {
+    const targetId = btn.getAttribute("data-target");
+    if (!targetId) continue;
+    const body = document.getElementById(targetId);
+    if (!body) continue;
+    if (isMobile && (targetId === "releasesBody" || targetId === "activityBody")) {
+      body.classList.add("hidden");
+      btn.textContent = "展开";
+    } else {
+      body.classList.remove("hidden");
+      btn.textContent = "折叠";
+    }
+    btn.addEventListener("click", () => {
+      const collapsed = body.classList.toggle("hidden");
+      btn.textContent = collapsed ? "展开" : "折叠";
+    });
+  }
+}
+
 async function runRepoNow() {
+  if (mustChangePassword) {
+    renderSecurityBanner();
+    toast("当前账号需先修改密码，请先返回主页设置。", "warn");
+    return;
+  }
   const btn = $("runRepoBtn");
   setButtonBusy(btn, true, "检查中…");
   try {
     const res = await withAuth(() => API.post("/run", { repo: repoKey }));
-    if (res.error) toast(`触发失败：${res.error}`, "bad");
+    if (res.error) toast(`触发失败：${formatApiError(res.error)}`, "bad");
     else toast(res.queued ? "已加入队列。" : "任务已在运行/队列中。", "ok");
   } catch (e) {
-    toast(String(e?.message || e), "bad");
+    toast(formatApiError(e?.message || e), "bad");
   } finally {
     setButtonBusy(btn, false);
   }
@@ -314,8 +376,10 @@ async function main() {
 
   $("repoTitle").textContent = repoKey;
   $("repoSubtitle").textContent = "活动与统计";
+  renderSecurityBanner();
 
   $("runRepoBtn").addEventListener("click", runRepoNow);
+  initSectionToggles();
   $("copyActivityBtn").addEventListener("click", async () => {
     const ok = await copyText($("activity").textContent || "");
     toast(ok ? "已复制活动。" : "复制失败，请手动选择复制。", ok ? "ok" : "warn");
@@ -337,6 +401,9 @@ async function main() {
       `删除旧版本次数: ${$("cleanupTotal").textContent || "0"}`,
       `已保存版本数: ${$("downloadedReleasesTotal").textContent || "0"}`,
       `下载失败次数: ${$("downloadErrorsTotal").textContent || "0"}`,
+      `上传重试次数: ${$("uploadRetryTotal").textContent || "0"}`,
+      `上传校验失败: ${$("uploadVerifyFailedTotal").textContent || "0"}`,
+      `上传队列深度: ${$("uploadQueueDepth").textContent || "0"}`,
     ].join("\n");
     const ok = await copyText(summary);
     toast(ok ? "已复制摘要。" : "复制失败。", ok ? "ok" : "warn");

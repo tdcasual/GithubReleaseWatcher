@@ -65,6 +65,9 @@ let settingsDialogDirtyBefore = false;
 let settingsDialogAuthUsernameBefore = "";
 let settingsDialogSaved = false;
 let lastWebdavTest = null;
+let mustChangePassword = false;
+let lastStorageHealthTotals = null;
+let lastStorageHealthAt = 0;
 
 const $ = (id) => document.getElementById(id);
 
@@ -81,6 +84,8 @@ function setDirty(v) {
 function formatError(e) {
   if (!e) return "未知错误";
   if (e?.code === "unauthorized") return "未登录或登录已过期。";
+  if (e?.code === "password_change_required") return "首次登录后请先在设置中修改账号密码。";
+  if (e?.code === "rate_limited") return "登录尝试过于频繁，请稍后再试。";
   return String(e?.message || e);
 }
 
@@ -177,6 +182,27 @@ function secondsToHuman(seconds) {
   return `${minutes}分钟`;
 }
 
+function secondsToElapsedText(seconds) {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  if (s < 60) return `${s}秒`;
+  return secondsToHuman(s);
+}
+
+function formatSignedDelta(value) {
+  const n = Number(value) || 0;
+  if (n > 0) return `+${n}`;
+  return String(n);
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function repoDomId(key) {
   return `repoMeta-${String(key || "").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 }
@@ -201,6 +227,23 @@ function buildBadge(text, cls) {
   const el = $("statusBadge");
   el.textContent = text;
   el.className = `badge ${cls ?? ""}`.trim();
+}
+
+function renderSecurityBanner() {
+  const el = $("securityBanner");
+  if (!el) return;
+  if (!mustChangePassword) {
+    el.classList.add("hidden");
+    el.textContent = "";
+    return;
+  }
+  el.classList.remove("hidden");
+  el.innerHTML =
+    '<span>安全限制：当前账号需先修改密码，创建/更新类操作会被拒绝。</span><button id="securityOpenSettingsBtn" class="btn security-banner-action" type="button">立即改密</button>';
+  const actionBtn = $("securityOpenSettingsBtn");
+  if (actionBtn) {
+    actionBtn.onclick = () => openSettingsDialog({ focusAuthPassword: true });
+  }
 }
 
 function setUser(username) {
@@ -561,6 +604,12 @@ function materializeDraftFromConfig() {
     username: storage.webdav?.username || "",
     verify_tls: storage.webdav?.verify_tls ?? true,
     timeout_seconds: storage.webdav?.timeout_seconds ?? 60,
+    upload_concurrency: storage.webdav?.upload_concurrency ?? 2,
+    max_retries: storage.webdav?.max_retries ?? 3,
+    retry_backoff_seconds: storage.webdav?.retry_backoff_seconds ?? 2,
+    verify_after_upload: storage.webdav?.verify_after_upload ?? true,
+    upload_temp_suffix: storage.webdav?.upload_temp_suffix || ".uploading",
+    cleanup_mode: storage.webdav?.cleanup_mode || "delete",
   };
   for (const repo of config.repos) {
     draft.repos[repo.key] = {
@@ -586,6 +635,12 @@ function syncSettingsFormFromDraft() {
   $("webdavUsername").value = draft?.storage?.webdav?.username || "";
   $("webdavTimeout").value = String(draft?.storage?.webdav?.timeout_seconds ?? 60);
   $("webdavVerifyTls").checked = !!(draft?.storage?.webdav?.verify_tls ?? true);
+  $("webdavUploadConcurrency").value = String(draft?.storage?.webdav?.upload_concurrency ?? 2);
+  $("webdavMaxRetries").value = String(draft?.storage?.webdav?.max_retries ?? 3);
+  $("webdavRetryBackoffSeconds").value = String(draft?.storage?.webdav?.retry_backoff_seconds ?? 2);
+  $("webdavVerifyAfterUpload").checked = !!(draft?.storage?.webdav?.verify_after_upload ?? true);
+  $("webdavUploadTempSuffix").value = String(draft?.storage?.webdav?.upload_temp_suffix || ".uploading");
+  $("webdavCleanupMode").value = String(draft?.storage?.webdav?.cleanup_mode || "delete");
 
   const fields = $("webdavFields");
   fields.classList.toggle("hidden", mode !== "webdav");
@@ -600,6 +655,12 @@ function syncDraftFromSettingsForm() {
   draft.storage.webdav.username = $("webdavUsername").value.trim();
   draft.storage.webdav.verify_tls = $("webdavVerifyTls").checked;
   draft.storage.webdav.timeout_seconds = Number($("webdavTimeout").value.trim() || 60);
+  draft.storage.webdav.upload_concurrency = Number($("webdavUploadConcurrency").value.trim() || 2);
+  draft.storage.webdav.max_retries = Number($("webdavMaxRetries").value.trim() || 3);
+  draft.storage.webdav.retry_backoff_seconds = Number($("webdavRetryBackoffSeconds").value.trim() || 2);
+  draft.storage.webdav.verify_after_upload = $("webdavVerifyAfterUpload").checked;
+  draft.storage.webdav.upload_temp_suffix = String($("webdavUploadTempSuffix").value || ".uploading").trim();
+  draft.storage.webdav.cleanup_mode = String($("webdavCleanupMode").value || "delete").trim();
   $("webdavFields").classList.toggle("hidden", mode !== "webdav");
 }
 
@@ -621,11 +682,14 @@ function setConfigLoadedUI(loaded) {
   $("repoFilterInput").disabled = !loaded;
   $("repoSortSelect").disabled = !loaded;
   setDirty(dirty);
+  renderSecurityBanner();
 }
 
 async function loadAll() {
   const status = await API.get("/status");
   config = status.config;
+  mustChangePassword = !!status?.security?.must_change_password;
+  renderSecurityBanner();
   if (!config) {
     buildBadge("配置未加载", "bad");
     $("configHint").textContent = status.config_error ? `配置错误：${status.config_error}` : "配置未加载。";
@@ -636,6 +700,9 @@ async function loadAll() {
   }
   setConfigLoadedUI(true);
   $("configHint").textContent = `配置文件：${status.config_path}（覆盖文件：${status.overrides_path}） · 调度：按仓库自适应`;
+  if (mustChangePassword) {
+    $("configHint").textContent += " · 安全提示：请先修改默认登录密码";
+  }
   if (status.auth?.username) {
     setUser(status.auth.username);
     $("authUsername").value = status.auth.username;
@@ -651,12 +718,16 @@ async function loadAll() {
   renderRepos();
   await refreshStatus();
   await refreshRepoSummariesSafe();
+  await refreshStorageDiagnostics();
 }
 
 async function refreshStatus() {
   const status = await API.get("/status");
+  mustChangePassword = !!status?.security?.must_change_password;
+  renderSecurityBanner();
 
-  if (status.config_error) buildBadge("配置错误", "bad");
+  if (mustChangePassword) buildBadge("需先改密", "bad");
+  else if (status.config_error) buildBadge("配置错误", "bad");
   else if (status.run?.in_progress) buildBadge("运行中…", "warn");
   else buildBadge("运行正常", "ok");
 
@@ -702,7 +773,104 @@ async function refreshRepoSummariesSafe() {
   } catch {}
 }
 
+function formatStorageHealthTopRepos(repos, limit = 3) {
+  const list = Array.isArray(repos) ? repos : [];
+  const ranked = list
+    .map((item) => ({
+      repo: String(item?.repo || "").trim(),
+      retry: Number(item?.upload_retry_total || 0),
+      verifyFailed: Number(item?.upload_verify_failed_total || 0),
+      queue: Number(item?.upload_queue_depth || 0),
+    }))
+    .filter((x) => x.repo && (x.retry > 0 || x.verifyFailed > 0 || x.queue > 0))
+    .sort((a, b) => {
+      if (a.verifyFailed !== b.verifyFailed) return b.verifyFailed - a.verifyFailed;
+      if (a.retry !== b.retry) return b.retry - a.retry;
+      if (a.queue !== b.queue) return b.queue - a.queue;
+      return a.repo.localeCompare(b.repo);
+    })
+    .slice(0, Math.max(1, limit));
+  return ranked;
+}
+
+async function refreshStorageDiagnostics() {
+  const capsEl = $("webdavCapabilitiesHint");
+  const healthEl = $("storageHealthHint");
+  if (!capsEl || !healthEl) return;
+  const mode = String(draft?.storage?.mode || "local");
+  if (mode !== "webdav") {
+    lastStorageHealthTotals = null;
+    lastStorageHealthAt = 0;
+    capsEl.className = "hint";
+    capsEl.textContent = "当前为本地存储模式。";
+    healthEl.className = "hint";
+    healthEl.textContent = "";
+    return;
+  }
+  try {
+    const caps = await withAuth(() => API.get("/storage/capabilities"));
+    if (caps.error || caps.ok === false) {
+      capsEl.className = "hint danger";
+      capsEl.textContent = `能力探测失败：${caps.error || "未知错误"}`;
+    } else {
+      const enabled = Object.entries(caps.capabilities || {})
+        .filter(([, v]) => !!v)
+        .map(([k]) => k.toUpperCase());
+      capsEl.className = "hint";
+      capsEl.textContent = `WebDAV 能力：${enabled.length ? enabled.join(", ") : "未探测到"}`;
+    }
+  } catch (e) {
+    capsEl.className = "hint danger";
+    capsEl.textContent = `能力探测失败：${formatError(e)}`;
+  }
+
+  try {
+    const health = await withAuth(() => API.get("/storage/health"));
+    const totals = health.totals || {};
+    const current = {
+      retry: Number(totals.upload_retry_total || 0),
+      verify_failed: Number(totals.upload_verify_failed_total || 0),
+      queue: Number(totals.upload_queue_depth || 0),
+    };
+    let trendText = "趋势：首次采样。";
+    const now = Date.now();
+    if (lastStorageHealthTotals && lastStorageHealthAt > 0) {
+      const elapsed = secondsToElapsedText((now - lastStorageHealthAt) / 1000);
+      trendText = `趋势（较 ${elapsed} 前）：重试 ${formatSignedDelta(
+        current.retry - (lastStorageHealthTotals.retry || 0)
+      )}，校验失败 ${formatSignedDelta(
+        current.verify_failed - (lastStorageHealthTotals.verify_failed || 0)
+      )}，队列 ${formatSignedDelta(current.queue - (lastStorageHealthTotals.queue || 0))}`;
+    }
+    lastStorageHealthTotals = current;
+    lastStorageHealthAt = now;
+    const topRepos = formatStorageHealthTopRepos(health.repos || [], 3);
+    healthEl.className = "hint";
+    const mainText = `上传健康：重试 ${current.retry} 次，校验失败 ${current.verify_failed} 次，队列深度 ${current.queue}。${trendText}`;
+    if (!topRepos.length) {
+      healthEl.textContent = `${mainText} 重点仓库：暂无异常。`;
+      return;
+    }
+    const topLinks = topRepos
+      .map((x) => {
+        const href = `/repo.html?repo=${encodeURIComponent(x.repo)}`;
+        const label = `${x.repo}(重试${x.retry}/校验${x.verifyFailed}/队列${x.queue})`;
+        return `<a href="${href}">${escapeHtml(label)}</a>`;
+      })
+      .join("；");
+    healthEl.innerHTML = `${escapeHtml(mainText)} 重点仓库：${topLinks}`;
+  } catch (e) {
+    healthEl.className = "hint danger";
+    healthEl.textContent = `上传健康读取失败：${formatError(e)}`;
+  }
+}
+
 async function runNow() {
+  if (mustChangePassword) {
+    renderSecurityBanner();
+    toast("当前账号需先修改密码，请先在设置中更新账号密码。", "warn");
+    return;
+  }
   const btn = $("runNowBtn");
   setButtonBusy(btn, true, "检查中…");
   try {
@@ -797,6 +965,41 @@ async function saveSettings({ busyButtons } = {}) {
     if (mode === "webdav" && !String(draft.storage.webdav?.base_url || "").trim()) {
       $("webdavBaseUrl").focus();
       throw new Error("WebDAV Base URL 不能为空。");
+    }
+    if (mode === "webdav") {
+      draft.storage.webdav.upload_concurrency = validateIntField({
+        inputId: "webdavUploadConcurrency",
+        label: "上传并发",
+        min: 1,
+        max: 32,
+      });
+      draft.storage.webdav.max_retries = validateIntField({
+        inputId: "webdavMaxRetries",
+        label: "失败重试次数",
+        min: 1,
+        max: 20,
+      });
+      draft.storage.webdav.retry_backoff_seconds = validateIntField({
+        inputId: "webdavRetryBackoffSeconds",
+        label: "重试退避秒数",
+        min: 1,
+        max: 300,
+      });
+      draft.storage.webdav.upload_temp_suffix = String($("webdavUploadTempSuffix").value || "").trim();
+      if (!draft.storage.webdav.upload_temp_suffix) {
+        $("webdavUploadTempSuffix").focus();
+        throw new Error("临时上传后缀不能为空。");
+      }
+      if (/[\\/]/.test(draft.storage.webdav.upload_temp_suffix)) {
+        $("webdavUploadTempSuffix").focus();
+        throw new Error("临时上传后缀不能包含路径分隔符。");
+      }
+      draft.storage.webdav.cleanup_mode = String($("webdavCleanupMode").value || "delete").trim().toLowerCase();
+      if (!["delete", "trash"].includes(draft.storage.webdav.cleanup_mode)) {
+        $("webdavCleanupMode").focus();
+        throw new Error("清理模式无效。");
+      }
+      draft.storage.webdav.verify_after_upload = $("webdavVerifyAfterUpload").checked;
     }
 
     const payload = cloneDeep(draft);
@@ -940,25 +1143,32 @@ async function copyLogs() {
   toast(ok ? "已复制活动。" : "复制失败，请手动选择复制。", ok ? "ok" : "warn");
 }
 
+function openSettingsDialog(options = {}) {
+  const focusAuthPassword = !!options.focusAuthPassword;
+  if (!draft) {
+    toast("配置未加载。", "bad");
+    return;
+  }
+  settingsDialogDraftSnapshot = cloneDeep(draft);
+  settingsDialogDirtyBefore = dirty;
+  settingsDialogAuthUsernameBefore = $("authUsername")?.value || "";
+  settingsDialogSaved = false;
+  $("settingsHint").textContent = "";
+  if (currentUser && $("authUsername")) $("authUsername").value = currentUser;
+  if ($("webdavPassword")) $("webdavPassword").value = "";
+  if ($("authPassword")) $("authPassword").value = "";
+  syncSettingsFormFromDraft();
+  $("settingsDialog").showModal();
+  refreshStorageDiagnostics().catch(() => {});
+  setTimeout(() => {
+    if (focusAuthPassword) $("authPassword")?.focus();
+    else $("localDirInput")?.focus();
+  }, 0);
+}
+
 function wireEvents() {
   $("runNowBtn").addEventListener("click", runNow);
-  $("settingsBtn").addEventListener("click", () => {
-    if (!draft) {
-      toast("配置未加载。", "bad");
-      return;
-    }
-    settingsDialogDraftSnapshot = cloneDeep(draft);
-    settingsDialogDirtyBefore = dirty;
-    settingsDialogAuthUsernameBefore = $("authUsername")?.value || "";
-    settingsDialogSaved = false;
-    $("settingsHint").textContent = "";
-    if (currentUser && $("authUsername")) $("authUsername").value = currentUser;
-    if ($("webdavPassword")) $("webdavPassword").value = "";
-    if ($("authPassword")) $("authPassword").value = "";
-    syncSettingsFormFromDraft();
-    $("settingsDialog").showModal();
-    setTimeout(() => $("localDirInput")?.focus(), 0);
-  });
+  $("settingsBtn").addEventListener("click", () => openSettingsDialog({ focusAuthPassword: false }));
   $("logoutBtn").addEventListener("click", async () => {
     const btn = $("logoutBtn");
     setButtonBusy(btn, true, "退出中…");
@@ -1079,13 +1289,31 @@ function wireEvents() {
     "webdavPassword",
     "webdavTimeout",
     "webdavVerifyTls",
+    "webdavUploadConcurrency",
+    "webdavMaxRetries",
+    "webdavRetryBackoffSeconds",
+    "webdavVerifyAfterUpload",
+    "webdavUploadTempSuffix",
+    "webdavCleanupMode",
     "authUsername",
     "authPassword",
   ]) {
     $(id).addEventListener("input", () => setDirty(true));
     $(id).addEventListener("change", () => setDirty(true));
   }
-  for (const id of ["webdavBaseUrl", "webdavUsername", "webdavPassword", "webdavTimeout", "webdavVerifyTls"]) {
+  for (const id of [
+    "webdavBaseUrl",
+    "webdavUsername",
+    "webdavPassword",
+    "webdavTimeout",
+    "webdavVerifyTls",
+    "webdavUploadConcurrency",
+    "webdavMaxRetries",
+    "webdavRetryBackoffSeconds",
+    "webdavVerifyAfterUpload",
+    "webdavUploadTempSuffix",
+    "webdavCleanupMode",
+  ]) {
     $(id).addEventListener("input", invalidateWebdavTest);
     $(id).addEventListener("change", invalidateWebdavTest);
   }
@@ -1105,6 +1333,12 @@ function wireEvents() {
       password: $("webdavPassword").value || "",
       verify_tls: $("webdavVerifyTls").checked,
       timeout_seconds: Number($("webdavTimeout").value.trim() || 60),
+      upload_concurrency: Number($("webdavUploadConcurrency").value.trim() || 2),
+      max_retries: Number($("webdavMaxRetries").value.trim() || 3),
+      retry_backoff_seconds: Number($("webdavRetryBackoffSeconds").value.trim() || 2),
+      verify_after_upload: $("webdavVerifyAfterUpload").checked,
+      upload_temp_suffix: String($("webdavUploadTempSuffix").value || ".uploading").trim(),
+      cleanup_mode: String($("webdavCleanupMode").value || "delete").trim().toLowerCase(),
     };
     try {
       const res = await withAuth(() => API.post("/storage/test", { webdav: patch }));
@@ -1119,6 +1353,76 @@ function wireEvents() {
       lastWebdavTest = { time: new Date().toLocaleString(), ok: false, message: formatError(e) };
       renderWebdavTestHint();
       toast(`WebDAV 测试失败：${formatError(e)}`, "bad");
+    } finally {
+      setButtonBusy(btn, false);
+    }
+  });
+
+  $("checkWebdavCapsBtn").addEventListener("click", async () => {
+    const btn = $("checkWebdavCapsBtn");
+    setButtonBusy(btn, true, "探测中…");
+    try {
+      await refreshStorageDiagnostics();
+      toast("能力探测已更新。", "ok");
+    } catch (e) {
+      toast(`能力探测失败：${formatError(e)}`, "bad");
+    } finally {
+      setButtonBusy(btn, false);
+    }
+  });
+
+  $("previewCleanupBtn").addEventListener("click", async () => {
+    const btn = $("previewCleanupBtn");
+    const hint = $("cleanupPreviewHint");
+    setButtonBusy(btn, true, "预演中…");
+    hint.className = "hint";
+    hint.textContent = "";
+    try {
+      const data = await withAuth(() => API.post("/cleanup/preview", {}));
+      const items = Array.isArray(data.items) ? data.items : [];
+      const total = items.reduce((acc, x) => acc + Number(x.delete_count || 0), 0);
+      hint.textContent = `清理预演：${items.length} 个仓库，预计删除 ${total} 个版本。`;
+      if (items.length) {
+        const top = items
+          .filter((x) => Number(x.delete_count || 0) > 0)
+          .sort((a, b) => Number(b.delete_count || 0) - Number(a.delete_count || 0))
+          .slice(0, 3)
+          .map((x) => `${x.repo}:${x.delete_count}`)
+          .join("，");
+        if (top) hint.textContent += ` 主要仓库：${top}`;
+      }
+      toast("清理预演完成。", "ok");
+    } catch (e) {
+      hint.className = "hint danger";
+      hint.textContent = `清理预演失败：${formatError(e)}`;
+      toast(`清理预演失败：${formatError(e)}`, "bad");
+    } finally {
+      setButtonBusy(btn, false);
+    }
+  });
+
+  $("syncCacheBtn").addEventListener("click", async () => {
+    const btn = $("syncCacheBtn");
+    const hint = $("syncCacheHint");
+    const prune = !!$("syncCachePruneToggle")?.checked;
+    setButtonBusy(btn, true, "同步中…");
+    hint.className = "hint";
+    hint.textContent = "";
+    try {
+      const data = await withAuth(() => API.post("/storage/sync-cache", { prune }));
+      const totals = data.totals || {};
+      const pruned = Number(totals.pruned_files || 0);
+      hint.textContent = `缓存同步${prune ? "（已执行清理）" : ""}：检查 ${totals.cache_files_checked || 0} 个文件，发现 stale ${
+        totals.stale_files || 0
+      } 个，缺失 ${totals.missing_files || 0} 个。`;
+      if (prune) {
+        hint.textContent += ` 已清理 ${pruned} 个。`;
+      }
+      toast("缓存同步完成。", "ok");
+    } catch (e) {
+      hint.className = "hint danger";
+      hint.textContent = `缓存同步失败：${formatError(e)}`;
+      toast(`缓存同步失败：${formatError(e)}`, "bad");
     } finally {
       setButtonBusy(btn, false);
     }
@@ -1178,9 +1482,15 @@ function startLoginFlow(message) {
         });
         const res = await resp.json().catch(() => ({}));
         if (!resp.ok || res.error) {
-          $("loginError").textContent = "账号或密码错误。";
+          if (res.error === "rate_limited" || resp.status === 429) {
+            $("loginError").textContent = "登录过于频繁，请稍后再试。";
+          } else {
+            $("loginError").textContent = "账号或密码错误。";
+          }
           return;
         }
+        mustChangePassword = !!res.user?.must_change_password;
+        renderSecurityBanner();
         onDone(res.user?.username || username);
       } catch (err) {
         $("loginError").textContent = String(err?.message || err);
@@ -1193,6 +1503,8 @@ function startLoginFlow(message) {
 async function requireLogin() {
   try {
     const me = await API.get("/me");
+    mustChangePassword = !!me.user?.must_change_password;
+    renderSecurityBanner();
     setUser(me.user?.username || "admin");
     return;
   } catch (e) {
@@ -1209,6 +1521,9 @@ async function main() {
   await requireLogin();
   await loadAll();
   await refreshLogs();
+  if (mustChangePassword) {
+    toast("请先在设置中修改默认账号密码。", "warn");
+  }
 
   const pollStatus = () => {
     if (document.hidden) return;

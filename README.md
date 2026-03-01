@@ -75,6 +75,9 @@ python3 watcher.py --config config.toml --web --no-ui
 - `GET /api/v1/repos/<owner>/<repo>/activity?limit=...`：单仓库活动列表
 - `GET /api/v1/repos/<owner>/<repo>/releases?limit=...`：单仓库已保存版本列表（来自 `state.json`）
 - `POST /api/v1/storage/test`：测试 WebDAV 连通性（可传 `{"webdav":{...}}`）
+- `GET /api/v1/storage/capabilities`：探测 WebDAV 能力（PROPFIND/MKCOL/PUT/DELETE/HEAD/MOVE）
+- `GET /api/v1/storage/health`：查看上传健康统计（重试次数、校验失败、队列深度）
+- `POST /api/v1/cleanup/preview`：预演清理结果（不实际删除）
 - Web 页面：
   - 首页「活动」：仅展示下载/清理等关键动作（全局）
   - 仓库页「活动」：每个仓库独立记录检查/下载/清理等事件（`/repo.html?repo=owner/repo`）
@@ -140,8 +143,9 @@ docker run --rm -p 8000:8000 -v "$PWD/data:/data" -e GITHUB_TOKEN="$GITHUB_TOKEN
 
 ### 安全建议（强烈建议）
 
-- 首次登录后务必在「设置」里修改默认账号密码（默认 `admin/admin`）
+- 首次登录后必须修改默认账号密码（默认 `admin/admin`，系统会限制敏感操作直到完成改密）
 - 暴露到公网建议再加一层访问控制（Cloudflare Zero Trust / BasicAuth / IP 白名单 / 反向代理鉴权等）
+- 登录失败会触发限流（短时多次失败会返回 429）
 
 ## 测试
 
@@ -176,3 +180,9 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 - `[storage.webdav].username` / `password`：WebDAV 账号密码（可留空；也可仅通过 Web 设置写入 `config.override.json`）
 - `[storage.webdav].verify_tls`：是否校验 TLS（默认 `true`）
 - `[storage.webdav].timeout_seconds`：请求超时（默认 `60`）
+- `[storage.webdav].upload_concurrency`：上传并发（默认 `2`，范围 `1~32`）
+- `[storage.webdav].max_retries`：上传失败重试次数（默认 `3`，范围 `1~20`）
+- `[storage.webdav].retry_backoff_seconds`：重试退避基础秒数（默认 `2`，范围 `1~300`）
+- `[storage.webdav].verify_after_upload`：上传后是否校验远端文件（默认 `true`）
+- `[storage.webdav].upload_temp_suffix`：临时上传后缀（默认 `.uploading`）
+- `[storage.webdav].cleanup_mode`：清理模式，`delete`（直接删除）或 `trash`（移动到 `.trash`）

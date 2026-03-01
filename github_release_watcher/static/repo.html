@@ -28,18 +28,22 @@
       </header>
 
       <main class="grid">
-        <section class="card card-status">
+        <section id="securityBanner" class="security-banner hidden" role="status" aria-live="polite"></section>
+
+        <section id="summarySection" class="card card-status">
           <div class="card-head">
             <div>
               <h2>概览</h2>
               <p class="muted">当前版本、检查计划、下载/清理统计。</p>
             </div>
             <div class="card-actions">
+              <button class="btn section-toggle" type="button" data-target="summaryBody">折叠</button>
               <button id="copySummaryBtn" class="btn" type="button">复制摘要</button>
             </div>
           </div>
 
-          <div class="kv">
+          <div id="summaryBody" class="section-body">
+            <div class="kv">
             <div class="kv-item">
               <div class="kv-k">当前版本</div>
               <div id="currentTag" class="kv-v">-</div>
@@ -85,37 +89,55 @@
               <div class="kv-k">下载失败次数</div>
               <div id="downloadErrorsTotal" class="kv-v">0</div>
             </div>
+            <div class="kv-item">
+              <div class="kv-k">上传重试次数</div>
+              <div id="uploadRetryTotal" class="kv-v">0</div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-k">上传校验失败</div>
+              <div id="uploadVerifyFailedTotal" class="kv-v">0</div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-k">上传队列深度</div>
+              <div id="uploadQueueDepth" class="kv-v">0</div>
+            </div>
           </div>
-
-          <p id="updateHint" class="hint"></p>
-          <p id="errorHint" class="hint danger"></p>
+            <p id="updateHint" class="hint"></p>
+            <p id="errorHint" class="hint danger"></p>
+          </div>
         </section>
 
-        <section class="card card-releases">
+        <section id="releasesSection" class="card card-releases">
           <div class="card-head">
             <div>
               <h2>版本</h2>
               <p class="muted">已保存的 Release 版本（来自 state.json）。</p>
             </div>
             <div class="card-actions">
+              <button class="btn section-toggle" type="button" data-target="releasesBody">折叠</button>
               <button id="copyReleasesBtn" class="btn" type="button">复制版本列表</button>
             </div>
           </div>
-          <p id="releaseStatsHint" class="hint"></p>
-          <pre id="releases" class="logs">加载中…</pre>
+          <div id="releasesBody" class="section-body">
+            <p id="releaseStatsHint" class="hint"></p>
+            <pre id="releases" class="logs">加载中…</pre>
+          </div>
         </section>
 
-        <section class="card card-logs">
+        <section id="activitySection" class="card card-logs">
           <div class="card-head">
             <div>
               <h2>活动</h2>
               <p class="muted">下载/清理/检查事件（每仓库独立记录）。</p>
             </div>
             <div class="card-actions">
+              <button class="btn section-toggle" type="button" data-target="activityBody">折叠</button>
               <button id="copyActivityBtn" class="btn" type="button">复制活动</button>
             </div>
           </div>
-          <pre id="activity" class="logs">加载中…</pre>
+          <div id="activityBody" class="section-body">
+            <pre id="activity" class="logs">加载中…</pre>
+          </div>
         </section>
       </main>
 
@@ -148,5 +170,11 @@
         </menu>
       </form>
     </dialog>
+
+    <nav class="mobile-nav" aria-label="快速导航">
+      <a class="mobile-nav-item" href="#summarySection">概览</a>
+      <a class="mobile-nav-item" href="#releasesSection">版本</a>
+      <a class="mobile-nav-item" href="#activitySection">活动</a>
+    </nav>
   </body>
 </html>

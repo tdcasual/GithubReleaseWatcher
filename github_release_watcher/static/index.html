@@ -33,7 +33,9 @@
       </header>
 
       <main class="grid">
-        <section class="card card-status">
+        <section id="securityBanner" class="security-banner hidden" role="status" aria-live="polite"></section>
+
+        <section id="statusSection" class="card card-status">
           <div class="card-head">
             <div>
               <h2>运行状态</h2>
@@ -91,7 +93,7 @@
           <p id="configHint" class="hint"></p>
         </section>
 
-        <section class="card card-repos">
+        <section id="reposSection" class="card card-repos">
           <div class="card-head">
             <div>
               <h2>仓库与资产规则</h2>
@@ -113,7 +115,7 @@
           <p id="repoCountHint" class="hint"></p>
         </section>
 
-        <section class="card card-logs">
+        <section id="logsSection" class="card card-logs">
           <div class="card-head">
             <div>
               <h2>活动</h2>
@@ -224,7 +226,54 @@
             </div>
           </div>
 
+          <div class="row">
+            <div class="grow">
+              <label class="label" for="webdavUploadConcurrency">上传并发</label>
+              <input id="webdavUploadConcurrency" class="input" type="number" min="1" max="32" step="1" />
+            </div>
+            <div class="grow">
+              <label class="label" for="webdavMaxRetries">失败重试次数</label>
+              <input id="webdavMaxRetries" class="input" type="number" min="1" max="20" step="1" />
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="grow">
+              <label class="label" for="webdavRetryBackoffSeconds">重试退避秒数</label>
+              <input id="webdavRetryBackoffSeconds" class="input" type="number" min="1" max="300" step="1" />
+            </div>
+            <div class="grow">
+              <label class="label" for="webdavUploadTempSuffix">临时上传后缀</label>
+              <input id="webdavUploadTempSuffix" class="input" placeholder=".uploading" />
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="grow">
+              <label class="label" for="webdavCleanupMode">清理模式</label>
+              <select id="webdavCleanupMode" class="input">
+                <option value="delete">直接删除</option>
+                <option value="trash">移入回收站（.trash）</option>
+              </select>
+            </div>
+            <div class="grow">
+              <label class="label" style="margin-bottom: 6px">上传后校验</label>
+              <label class="switch">
+                <input id="webdavVerifyAfterUpload" type="checkbox" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
           <p id="webdavTestHint" class="hint"></p>
+          <p id="webdavCapabilitiesHint" class="hint"></p>
+          <p id="storageHealthHint" class="hint"></p>
+          <p id="syncCacheHint" class="hint"></p>
+          <p id="cleanupPreviewHint" class="hint"></p>
+          <label class="inline option-inline" for="syncCachePruneToggle">
+            <input id="syncCachePruneToggle" type="checkbox" />
+            <span>同步时清理陈旧缓存文件（prune）</span>
+          </label>
         </div>
 
         <div class="divider"></div>
@@ -245,6 +294,9 @@
 
         <menu class="dialog-actions">
           <button id="testWebdavBtn" class="btn" type="button">测试 WebDAV</button>
+          <button id="checkWebdavCapsBtn" class="btn" type="button">检查能力</button>
+          <button id="syncCacheBtn" class="btn" type="button">同步缓存</button>
+          <button id="previewCleanupBtn" class="btn" type="button">预演清理</button>
           <button id="saveSettingsBtn" class="btn primary" type="button">保存</button>
           <button class="btn" value="cancel">取消（不保存）</button>
         </menu>
@@ -273,5 +325,11 @@
         </menu>
       </form>
     </dialog>
+
+    <nav class="mobile-nav" aria-label="快速导航">
+      <a class="mobile-nav-item" href="#statusSection">状态</a>
+      <a class="mobile-nav-item" href="#reposSection">仓库</a>
+      <a class="mobile-nav-item" href="#logsSection">活动</a>
+    </nav>
   </body>
 </html>

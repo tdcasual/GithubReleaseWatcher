@@ -18,6 +18,12 @@ mode = "local"
 # password = "pass"
 # verify_tls = true
 # timeout_seconds = 60
+# upload_concurrency = 2
+# max_retries = 3
+# retry_backoff_seconds = 2
+# verify_after_upload = true
+# upload_temp_suffix = ".uploading"
+# cleanup_mode = "delete" # delete / trash
 
 [[repos]]
 name = "gruntwork-io/fetch"

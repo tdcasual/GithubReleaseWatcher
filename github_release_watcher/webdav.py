@@ -64,6 +64,37 @@ class WebDAVClient:
             **kwargs,
         )
 
+    def detect_capabilities(self) -> dict[str, bool]:
+        caps = {
+            "propfind": False,
+            "mkcol": False,
+            "put": False,
+            "delete": False,
+            "head": False,
+            "move": False,
+        }
+        url = self._base_url
+        resp = self._request("OPTIONS", url)
+        try:
+            allow_raw = str(resp.headers.get("Allow") or "")
+            dav_raw = str(resp.headers.get("DAV") or "")
+            methods = {x.strip().upper() for x in allow_raw.split(",") if x.strip()}
+            caps["mkcol"] = "MKCOL" in methods
+            caps["put"] = "PUT" in methods
+            caps["delete"] = "DELETE" in methods
+            caps["move"] = "MOVE" in methods
+            caps["propfind"] = "PROPFIND" in methods or bool(dav_raw.strip())
+        finally:
+            resp.close()
+
+        head_resp = self._request("HEAD", url)
+        try:
+            caps["head"] = head_resp.status_code != 405
+        finally:
+            head_resp.close()
+
+        return caps
+
     def ensure_dir(self, rel_dir: str) -> None:
         rel = _safe_rel_path(rel_dir)
         if not rel:
@@ -138,6 +169,24 @@ class WebDAVClient:
             if resp.status_code in (200, 202, 204, 404):
                 return
             raise WebDAVError(f"DELETE failed ({resp.status_code}): {resp.text[:500]}")
+        finally:
+            resp.close()
+
+    def move(self, src_rel_path: str, dst_rel_path: str, *, overwrite: bool = True) -> None:
+        src_url = self._url(src_rel_path)
+        dst_url = self._url(dst_rel_path)
+        resp = self._request(
+            "MOVE",
+            src_url,
+            headers={
+                "Destination": dst_url,
+                "Overwrite": "T" if overwrite else "F",
+            },
+        )
+        try:
+            if resp.status_code in (200, 201, 204):
+                return
+            raise WebDAVError(f"MOVE failed ({resp.status_code}): {resp.text[:500]}")
         finally:
             resp.close()
 

@@ -5,7 +5,9 @@ import logging
 import re
 import shutil
 import statistics
-from contextlib import suppress
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import nullcontext, suppress
 from datetime import datetime, timezone
 import time
 from pathlib import Path
@@ -90,7 +92,7 @@ def _compute_update_stats(releases: list[Release]) -> dict:
     times.sort(reverse=True)
 
     intervals: list[float] = []
-    for a, b in zip(times, times[1:], strict=False):
+    for a, b in zip(times, times[1:]):
         delta = (a - b).total_seconds()
         if delta > 0:
             intervals.append(delta)
@@ -275,25 +277,91 @@ def _process_repo(
     cache_root = config.download_dir / ".webdav_cache"
     cache_repo_dir = cache_root / owner / repo
     cache_repo_dir.mkdir(parents=True, exist_ok=True)
+    with suppress(Exception):
+        stats["webdav_capabilities"] = webdav.detect_capabilities()
 
-    for release in reversed(wanted):
-        ok = (
-            _ensure_release_downloaded_webdav(
-                repo_key,
-                owner,
-                repo,
-                repo_https_url,
-                cache_repo_dir,
-                repo_cfg,
-                release,
-                downloader,
-                webdav,
-                repo_state,
+    webdav_release_kwargs = {
+        "max_retries": int(getattr(config.webdav, "max_retries", 3) or 3),
+        "retry_backoff_seconds": int(getattr(config.webdav, "retry_backoff_seconds", 2) or 2),
+        "verify_after_upload": bool(getattr(config.webdav, "verify_after_upload", True)),
+        "upload_temp_suffix": str(getattr(config.webdav, "upload_temp_suffix", ".uploading") or ".uploading"),
+    }
+    upload_concurrency = int(getattr(config.webdav, "upload_concurrency", 1) or 1)
+    releases_to_process = list(reversed(wanted))
+    if upload_concurrency <= 1 or len(releases_to_process) <= 1:
+        for release in releases_to_process:
+            ok = (
+                _ensure_release_downloaded_webdav(
+                    repo_key,
+                    owner,
+                    repo,
+                    repo_https_url,
+                    cache_repo_dir,
+                    repo_cfg,
+                    release,
+                    downloader,
+                    webdav,
+                    repo_state,
+                    state_lock=None,
+                    **webdav_release_kwargs,
+                )
+                and ok
             )
-            and ok
-        )
+    else:
+        workers = min(upload_concurrency, len(releases_to_process))
+        state_lock = threading.Lock()
+        logging.info("[%s] WebDAV release upload with %d workers.", repo_key, workers)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_release = {
+                executor.submit(
+                    _ensure_release_downloaded_webdav,
+                    repo_key,
+                    owner,
+                    repo,
+                    repo_https_url,
+                    cache_repo_dir,
+                    repo_cfg,
+                    release,
+                    downloader,
+                    webdav,
+                    repo_state,
+                    state_lock=state_lock,
+                    **webdav_release_kwargs,
+                ): release
+                for release in releases_to_process
+            }
+            for future in as_completed(future_to_release):
+                release = future_to_release[future]
+                tag = release.tag_name
+                try:
+                    release_ok = future.result()
+                except Exception as exc:
+                    logging.exception("[%s:%s] WebDAV release sync crashed: %s", repo_key, tag, exc)
+                    with state_lock:
+                        stats = _repo_stats(repo_state)
+                        error_type = "network" if _is_network_error(exc) else "other"
+                        _mark_last_error(stats, error_type=error_type, error=f"{tag}: {exc}")
+                        _record_repo_event(
+                            repo_state,
+                            event_type="download_error",
+                            message=f"{tag} 同步失败：{exc}",
+                            tag=tag,
+                            error_type=error_type,
+                            path=f"webdav:{owner}/{repo}/{_sanitize_path_component(tag)}",
+                        )
+                    ok = False
+                    continue
+                ok = release_ok and ok
 
-    _cleanup_old_releases_webdav(repo_key, owner, repo, webdav, wanted_tags, repo_state)
+    _cleanup_old_releases_webdav(
+        repo_key,
+        owner,
+        repo,
+        webdav,
+        wanted_tags,
+        repo_state,
+        cleanup_mode=str(getattr(config.webdav, "cleanup_mode", "delete") or "delete"),
+    )
     stats = _repo_stats(repo_state)
     stats["storage_mode"] = "webdav"
     stats["download_root"] = f"webdav:{owner}/{repo}"
@@ -534,6 +602,66 @@ def _write_release_metadata_local(tag_dir: Path, release: Release) -> None:
     meta_path.write_bytes(_release_metadata_bytes(release))
 
 
+def _upload_file_to_webdav(
+    webdav: WebDAVClient,
+    *,
+    remote_path: str,
+    local_path: Path,
+    expected_size: int | None,
+    repo_state: dict,
+    state_lock=None,
+    max_retries: int,
+    retry_backoff_seconds: int,
+    verify_after_upload: bool,
+    upload_temp_suffix: str,
+) -> None:
+    def _inc_upload_stat(key: str, amount: int = 1) -> None:
+        with (state_lock if state_lock is not None else nullcontext()):
+            stats = _repo_stats(repo_state)
+            _inc_stat(stats, key, amount)
+
+    max_retries = max(1, int(max_retries))
+    backoff = max(1, int(retry_backoff_seconds))
+    suffix = str(upload_temp_suffix or ".uploading")
+    if "/" in suffix or "\\" in suffix:
+        suffix = ".uploading"
+
+    last_error: Exception | None = None
+    for attempt in range(1, max_retries + 1):
+        temp_remote = f"{remote_path}{suffix}"
+        try:
+            with suppress(Exception):
+                webdav.delete(temp_remote, is_dir=False)
+            webdav.put_file(temp_remote, local_path, content_type="application/octet-stream")
+            try:
+                webdav.move(temp_remote, remote_path, overwrite=True)
+            except WebDAVError:
+                # Some servers disable MOVE for files; fallback to direct PUT.
+                webdav.put_file(remote_path, local_path, content_type="application/octet-stream")
+                with suppress(Exception):
+                    webdav.delete(temp_remote, is_dir=False)
+
+            if verify_after_upload:
+                exists, remote_size = webdav.stat_file(remote_path)
+                if not exists:
+                    _inc_upload_stat("upload_verify_failed_total", 1)
+                    raise WebDAVError("remote file not found after upload")
+                if expected_size is not None and remote_size is not None and int(remote_size) != int(expected_size):
+                    _inc_upload_stat("upload_verify_failed_total", 1)
+                    raise WebDAVError(f"remote size mismatch: expected {expected_size}, got {remote_size}")
+            return
+        except Exception as exc:
+            last_error = exc
+            with suppress(Exception):
+                webdav.delete(temp_remote, is_dir=False)
+            if attempt >= max_retries:
+                break
+            _inc_upload_stat("upload_retry_total", 1)
+            time.sleep(min(backoff * (2 ** (attempt - 1)), 30))
+
+    raise WebDAVError(f"webdav upload failed after {max_retries} attempts: {last_error}")
+
+
 def _ensure_release_downloaded_webdav(
     repo_key: str,
     owner: str,
@@ -545,7 +673,16 @@ def _ensure_release_downloaded_webdav(
     downloader: GitHubReleaseAssetDownloader,
     webdav: WebDAVClient,
     repo_state: dict,
+    state_lock=None,
+    *,
+    max_retries: int,
+    retry_backoff_seconds: int,
+    verify_after_upload: bool,
+    upload_temp_suffix: str,
 ) -> bool:
+    def _state_guard():
+        return state_lock if state_lock is not None else nullcontext()
+
     tag = release.tag_name
     tag_dir_name = _sanitize_path_component(tag)
     remote_tag_dir = f"{owner}/{repo}/{tag_dir_name}"
@@ -566,30 +703,40 @@ def _ensure_release_downloaded_webdav(
     selected_assets = _select_assets(release, repo_cfg)
     if not selected_assets:
         logging.info("[%s:%s] No assets matched rules; marking as processed.", repo_key, tag)
-        existing_state = repo_state.get("releases", {}).get(tag, {}) if isinstance(repo_state.get("releases"), dict) else {}
-        mark_release_processed(
-            repo_state,
-            tag,
-            list(existing_state.get("downloaded_assets", []) or []),
-            published_at=release.published_at.isoformat() if release.published_at else None,
-            created_at=release.created_at.isoformat() if release.created_at else None,
-            html_url=release.html_url,
-        )
+        with _state_guard():
+            existing_state = (
+                repo_state.get("releases", {}).get(tag, {}) if isinstance(repo_state.get("releases"), dict) else {}
+            )
+            mark_release_processed(
+                repo_state,
+                tag,
+                list(existing_state.get("downloaded_assets", []) or []),
+                published_at=release.published_at.isoformat() if release.published_at else None,
+                created_at=release.created_at.isoformat() if release.created_at else None,
+                html_url=release.html_url,
+            )
         return True
 
-    existing_state = repo_state.get("releases", {}).get(tag, {}) if isinstance(repo_state.get("releases"), dict) else {}
+    with _state_guard():
+        existing_state = repo_state.get("releases", {}).get(tag, {}) if isinstance(repo_state.get("releases"), dict) else {}
     downloaded_assets = set(existing_state.get("downloaded_assets", []) or [])
 
     ok = True
     cache_tag_dir = cache_repo_dir / tag_dir_name
     cache_tag_dir.mkdir(parents=True, exist_ok=True)
+    with _state_guard():
+        stats = _repo_stats(repo_state)
+        stats["upload_queue_depth"] = len(selected_assets)
 
-    for asset in selected_assets:
+    for idx, asset in enumerate(selected_assets, start=1):
         remote_path = f"{remote_tag_dir}/{asset.name}"
         try:
             exists, remote_size = webdav.stat_file(remote_path)
             if exists and asset.size is not None and remote_size is not None and int(remote_size) == int(asset.size):
                 downloaded_assets.add(asset.name)
+                with _state_guard():
+                    stats = _repo_stats(repo_state)
+                    stats["upload_queue_depth"] = max(0, len(selected_assets) - idx)
                 continue
         except WebDAVError:
             # If we cannot stat, fall back to upload.
@@ -600,10 +747,11 @@ def _ensure_release_downloaded_webdav(
             result = downloader.download_release_asset(repo_https_url, tag, asset, cache_tag_dir)
         except DownloadError as exc:
             logging.error("[%s:%s] Download failed for %s: %s", repo_key, tag, asset.name, exc)
-            stats = _repo_stats(repo_state)
-            _inc_stat(stats, "download_errors_total", 1)
             error_type = "network" if _is_network_error(exc) else "other"
-            _mark_last_error(stats, error_type=error_type, error=f"{asset.name}: {exc}")
+            with _state_guard():
+                stats = _repo_stats(repo_state)
+                _inc_stat(stats, "download_errors_total", 1)
+                _mark_last_error(stats, error_type=error_type, error=f"{asset.name}: {exc}")
             activity_logger.warning(
                 "%s %s 下载失败：%s",
                 repo_key,
@@ -611,23 +759,32 @@ def _ensure_release_downloaded_webdav(
                 asset.name,
                 extra={"event_type": "download_error", "repo": repo_key, "tag": tag, "path": remote_tag_dir},
             )
-            _record_repo_event(
-                repo_state,
-                event_type="download_error",
-                message=f"{asset.name} 下载失败：{exc}",
-                tag=tag,
-                asset=asset.name,
-                error_type=error_type,
-                path=f"webdav:{remote_tag_dir}",
-            )
+            with _state_guard():
+                _record_repo_event(
+                    repo_state,
+                    event_type="download_error",
+                    message=f"{asset.name} 下载失败：{exc}",
+                    tag=tag,
+                    asset=asset.name,
+                    error_type=error_type,
+                    path=f"webdav:{remote_tag_dir}",
+                )
             ok = False
             continue
 
         try:
-            webdav.put_file(remote_path, result.path, content_type="application/octet-stream")
-            exists, remote_size = webdav.stat_file(remote_path)
-            if asset.size is not None and remote_size is not None and int(remote_size) != int(asset.size):
-                raise WebDAVError(f"remote size mismatch: expected {asset.size}, got {remote_size}")
+            _upload_file_to_webdav(
+                webdav,
+                remote_path=remote_path,
+                local_path=result.path,
+                expected_size=asset.size,
+                repo_state=repo_state,
+                state_lock=state_lock,
+                max_retries=max_retries,
+                retry_backoff_seconds=retry_backoff_seconds,
+                verify_after_upload=verify_after_upload,
+                upload_temp_suffix=upload_temp_suffix,
+            )
         except WebDAVError as exc:
             logging.error("[%s:%s] WebDAV upload failed for %s: %s", repo_key, tag, asset.name, exc)
             activity_logger.warning(
@@ -637,6 +794,20 @@ def _ensure_release_downloaded_webdav(
                 asset.name,
                 extra={"event_type": "download_error", "repo": repo_key, "tag": tag, "path": remote_tag_dir},
             )
+            error_type = "network" if _is_network_error(exc) else "other"
+            with _state_guard():
+                stats = _repo_stats(repo_state)
+                _inc_stat(stats, "download_errors_total", 1)
+                _mark_last_error(stats, error_type=error_type, error=f"{asset.name}: {exc}")
+                _record_repo_event(
+                    repo_state,
+                    event_type="download_error",
+                    message=f"{asset.name} 上传失败：{exc}",
+                    tag=tag,
+                    asset=asset.name,
+                    error_type=error_type,
+                    path=f"webdav:{remote_tag_dir}",
+                )
             ok = False
             continue
         finally:
@@ -644,8 +815,10 @@ def _ensure_release_downloaded_webdav(
                 result.path.unlink()
 
         downloaded_assets.add(asset.name)
-        stats = _repo_stats(repo_state)
-        _inc_stat(stats, "download_assets_total", 1)
+        with _state_guard():
+            stats = _repo_stats(repo_state)
+            _inc_stat(stats, "download_assets_total", 1)
+            stats["upload_queue_depth"] = max(0, len(selected_assets) - idx)
         activity_logger.info(
             "%s %s 下载：%s → %s",
             repo_key,
@@ -654,26 +827,31 @@ def _ensure_release_downloaded_webdav(
             f"webdav:{remote_tag_dir}",
             extra={"event_type": "download", "repo": repo_key, "tag": tag, "path": f"webdav:{remote_tag_dir}"},
         )
-        _record_repo_event(
-            repo_state,
-            event_type="download",
-            message=f"下载：{asset.name}",
-            tag=tag,
-            asset=asset.name,
-            path=f"webdav:{remote_tag_dir}",
-        )
+        with _state_guard():
+            _record_repo_event(
+                repo_state,
+                event_type="download",
+                message=f"下载：{asset.name}",
+                tag=tag,
+                asset=asset.name,
+                path=f"webdav:{remote_tag_dir}",
+            )
 
-    mark_release_processed(
-        repo_state,
-        tag,
-        sorted(downloaded_assets),
-        published_at=release.published_at.isoformat() if release.published_at else None,
-        created_at=release.created_at.isoformat() if release.created_at else None,
-        html_url=release.html_url,
-    )
+    with _state_guard():
+        mark_release_processed(
+            repo_state,
+            tag,
+            sorted(downloaded_assets),
+            published_at=release.published_at.isoformat() if release.published_at else None,
+            created_at=release.created_at.isoformat() if release.created_at else None,
+            html_url=release.html_url,
+        )
     with suppress(Exception):
         if cache_tag_dir.exists() and not any(cache_tag_dir.iterdir()):
             cache_tag_dir.rmdir()
+    with _state_guard():
+        stats = _repo_stats(repo_state)
+        stats["upload_queue_depth"] = 0
     return ok
 
 
@@ -736,6 +914,8 @@ def _cleanup_old_releases_webdav(
     webdav: WebDAVClient,
     keep_tags: list[str],
     repo_state: dict,
+    *,
+    cleanup_mode: str,
 ) -> None:
     keep_tag_set = set(keep_tags)
     releases_state = repo_state.get("releases", {})
@@ -752,21 +932,33 @@ def _cleanup_old_releases_webdav(
         downloaded = entry.get("downloaded_assets", []) if isinstance(entry.get("downloaded_assets"), list) else []
 
         ok = True
-        for name in downloaded:
+        mode = str(cleanup_mode or "delete").strip().lower()
+        if mode == "trash":
+            trash_dir = f".trash/{owner}/{repo}"
+            trash_target = f"{trash_dir}/{int(time.time())}-{tag_dir_name}"
             try:
-                webdav.delete(f"{remote_tag_dir}/{name}", is_dir=False)
+                webdav.ensure_dir(trash_dir)
+                webdav.move(remote_tag_dir, trash_target, overwrite=False)
             except WebDAVError:
                 ok = False
 
-        try:
-            webdav.delete(f"{remote_tag_dir}/release.json", is_dir=False)
-        except WebDAVError:
-            ok = False
+        if not ok or mode != "trash":
+            ok = True
+            for name in downloaded:
+                try:
+                    webdav.delete(f"{remote_tag_dir}/{name}", is_dir=False)
+                except WebDAVError:
+                    ok = False
 
-        try:
-            webdav.delete(remote_tag_dir, is_dir=True)
-        except WebDAVError:
-            ok = False
+            try:
+                webdav.delete(f"{remote_tag_dir}/release.json", is_dir=False)
+            except WebDAVError:
+                ok = False
+
+            try:
+                webdav.delete(remote_tag_dir, is_dir=True)
+            except WebDAVError:
+                ok = False
 
         if ok:
             stats = _repo_stats(repo_state)

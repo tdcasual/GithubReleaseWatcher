@@ -123,6 +123,7 @@ def _default_auth_config() -> dict[str, Any]:
         "salt": salt_hex,
         "iterations": iterations,
         "password_hash": _pbkdf2_hash("admin", salt_hex=salt_hex, iterations=iterations),
+        "must_change_password": True,
     }
 
 
@@ -142,7 +143,13 @@ def _load_auth_config(overrides: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(password_hash, str) or not re.fullmatch(r"[0-9a-f]{32,128}", password_hash):
         return _default_auth_config()
 
-    return {"username": username.strip(), "salt": salt, "iterations": int(iterations), "password_hash": password_hash}
+    return {
+        "username": username.strip(),
+        "salt": salt,
+        "iterations": int(iterations),
+        "password_hash": password_hash,
+        "must_change_password": False,
+    }
 
 
 def _verify_password(password: str, auth_config: dict[str, Any]) -> bool:
@@ -174,6 +181,13 @@ def _guess_asset_types_from_patterns(patterns: list[str]) -> list[str]:
 def _repo_key_from_spec(spec: str) -> str:
     owner, repo, _ = parse_repo_spec(spec)
     return f"{owner}/{repo}"
+
+
+def _sanitize_path_component(value: str) -> str:
+    raw = str(value or "").strip()
+    raw = raw.replace("/", "__").replace("\\", "__")
+    raw = raw.replace("..", "__")
+    return raw or "__empty__"
 
 
 def _public_config(config: AppConfig) -> dict[str, Any]:
@@ -225,6 +239,12 @@ def _public_config(config: AppConfig) -> dict[str, Any]:
                 "username": getattr(getattr(config, "webdav", None), "username", None),
                 "verify_tls": bool(getattr(getattr(config, "webdav", None), "verify_tls", True)),
                 "timeout_seconds": int(getattr(getattr(config, "webdav", None), "timeout_seconds", 60) or 60),
+                "upload_concurrency": int(getattr(getattr(config, "webdav", None), "upload_concurrency", 2) or 2),
+                "max_retries": int(getattr(getattr(config, "webdav", None), "max_retries", 3) or 3),
+                "retry_backoff_seconds": int(getattr(getattr(config, "webdav", None), "retry_backoff_seconds", 2) or 2),
+                "verify_after_upload": bool(getattr(getattr(config, "webdav", None), "verify_after_upload", True)),
+                "upload_temp_suffix": str(getattr(getattr(config, "webdav", None), "upload_temp_suffix", ".uploading") or ".uploading"),
+                "cleanup_mode": str(getattr(getattr(config, "webdav", None), "cleanup_mode", "delete") or "delete"),
             },
         },
         "repos": repos,
@@ -278,6 +298,28 @@ def _apply_overrides(config: AppConfig, overrides: dict[str, Any], *, base_dir: 
                 config.webdav.verify_tls = bool(webdav_overrides.get("verify_tls", True))
             if "timeout_seconds" in webdav_overrides:
                 config.webdav.timeout_seconds = _safe_int(webdav_overrides.get("timeout_seconds"), min_value=5, max_value=600)
+            if "upload_concurrency" in webdav_overrides:
+                config.webdav.upload_concurrency = _safe_int(webdav_overrides.get("upload_concurrency"), min_value=1, max_value=32)
+            if "max_retries" in webdav_overrides:
+                config.webdav.max_retries = _safe_int(webdav_overrides.get("max_retries"), min_value=1, max_value=20)
+            if "retry_backoff_seconds" in webdav_overrides:
+                config.webdav.retry_backoff_seconds = _safe_int(
+                    webdav_overrides.get("retry_backoff_seconds"), min_value=1, max_value=300
+                )
+            if "verify_after_upload" in webdav_overrides:
+                config.webdav.verify_after_upload = bool(webdav_overrides.get("verify_after_upload", True))
+            if "upload_temp_suffix" in webdav_overrides:
+                suffix = str(webdav_overrides.get("upload_temp_suffix") or "").strip()
+                if not suffix:
+                    raise ValueError("webdav.upload_temp_suffix must be a non-empty string")
+                if "/" in suffix or "\\" in suffix:
+                    raise ValueError("webdav.upload_temp_suffix cannot contain path separators")
+                config.webdav.upload_temp_suffix = suffix
+            if "cleanup_mode" in webdav_overrides:
+                cleanup_mode = str(webdav_overrides.get("cleanup_mode") or "").strip().lower()
+                if cleanup_mode not in ("delete", "trash"):
+                    raise ValueError("webdav.cleanup_mode must be 'delete' or 'trash'")
+                config.webdav.cleanup_mode = cleanup_mode
 
         if str(getattr(config, "storage_mode", "local") or "local") == "webdav":
             if not str(getattr(getattr(config, "webdav", None), "base_url", "") or "").strip():
@@ -531,6 +573,10 @@ class WatcherService:
         with self._lock:
             return str(self._auth_config.get("username") or "admin")
 
+    def must_change_password(self) -> bool:
+        with self._lock:
+            return bool(self._auth_config.get("must_change_password", False))
+
     def verify_login(self, username: str, password: str) -> bool:
         with self._lock:
             if username.strip() != str(self._auth_config.get("username")):
@@ -554,6 +600,7 @@ class WatcherService:
             "salt": salt_hex,
             "iterations": iterations,
             "password_hash": _pbkdf2_hash(password, salt_hex=salt_hex, iterations=iterations),
+            "must_change_password": False,
         }
         overrides["updated_at"] = _utc_now_iso()
         _write_json_atomic(self._overrides_path, overrides)
@@ -672,6 +719,30 @@ class WatcherService:
                     webdav_store["timeout_seconds"] = _safe_int(
                         webdav_patch.get("timeout_seconds"), min_value=5, max_value=600
                     )
+                if "upload_concurrency" in webdav_patch:
+                    webdav_store["upload_concurrency"] = _safe_int(
+                        webdav_patch.get("upload_concurrency"), min_value=1, max_value=32
+                    )
+                if "max_retries" in webdav_patch:
+                    webdav_store["max_retries"] = _safe_int(webdav_patch.get("max_retries"), min_value=1, max_value=20)
+                if "retry_backoff_seconds" in webdav_patch:
+                    webdav_store["retry_backoff_seconds"] = _safe_int(
+                        webdav_patch.get("retry_backoff_seconds"), min_value=1, max_value=300
+                    )
+                if "verify_after_upload" in webdav_patch:
+                    webdav_store["verify_after_upload"] = bool(webdav_patch.get("verify_after_upload", True))
+                if "upload_temp_suffix" in webdav_patch:
+                    suffix = str(webdav_patch.get("upload_temp_suffix") or "").strip()
+                    if not suffix:
+                        raise ValueError("webdav.upload_temp_suffix must be a non-empty string")
+                    if "/" in suffix or "\\" in suffix:
+                        raise ValueError("webdav.upload_temp_suffix cannot contain path separators")
+                    webdav_store["upload_temp_suffix"] = suffix
+                if "cleanup_mode" in webdav_patch:
+                    cleanup_mode = str(webdav_patch.get("cleanup_mode") or "").strip().lower()
+                    if cleanup_mode not in ("delete", "trash"):
+                        raise ValueError("webdav.cleanup_mode must be 'delete' or 'trash'")
+                    webdav_store["cleanup_mode"] = cleanup_mode
 
             mode_effective = _normalize_storage_mode(storage_store.get("mode"))
             if mode_effective == "webdav":
@@ -735,6 +806,7 @@ class WatcherService:
                 "overrides_path": str(self._overrides_path),
                 "log_file": str(self._log_file) if self._log_file else None,
                 "auth": {"username": str(self._auth_config.get("username") or "admin")},
+                "security": {"must_change_password": bool(self._auth_config.get("must_change_password", False))},
                 "config_loaded": config is not None,
                 "config_error": self._config_error,
                 "last_config_reload_at": self._last_config_reload_at,
@@ -760,6 +832,219 @@ class WatcherService:
                 raise RuntimeError("Config not loaded")
             state_path = config.state_file
         return load_state(state_path)
+
+    def get_storage_capabilities(self) -> dict[str, Any]:
+        with self._lock:
+            config = copy.deepcopy(self._config) if self._config is not None else None
+        if config is None:
+            raise RuntimeError("Config not loaded")
+        mode = str(getattr(config, "storage_mode", "local") or "local")
+        if mode != "webdav":
+            return {"mode": mode, "ok": True, "capabilities": {}}
+        try:
+            client = WebDAVClient(config.webdav)
+            capabilities = client.detect_capabilities()
+            return {"mode": mode, "ok": True, "capabilities": capabilities}
+        except Exception as exc:
+            return {"mode": mode, "ok": False, "capabilities": {}, "error": str(exc)}
+
+    def get_storage_health(self) -> dict[str, Any]:
+        with self._lock:
+            config = copy.deepcopy(self._config) if self._config is not None else None
+        if config is None:
+            raise RuntimeError("Config not loaded")
+        state = load_state(config.state_file)
+        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
+        totals = {
+            "upload_retry_total": 0,
+            "upload_verify_failed_total": 0,
+            "upload_queue_depth": 0,
+        }
+        repos: list[dict[str, Any]] = []
+        for repo_key, repo_state in repos_state.items():
+            if not isinstance(repo_key, str):
+                continue
+            if not isinstance(repo_state, dict):
+                repo_state = {}
+            stats = repo_state.get("stats", {}) if isinstance(repo_state.get("stats"), dict) else {}
+            retry_total = int(stats.get("upload_retry_total", 0) or 0)
+            verify_failed_total = int(stats.get("upload_verify_failed_total", 0) or 0)
+            queue_depth = int(stats.get("upload_queue_depth", 0) or 0)
+            totals["upload_retry_total"] += retry_total
+            totals["upload_verify_failed_total"] += verify_failed_total
+            totals["upload_queue_depth"] += queue_depth
+            repos.append(
+                {
+                    "repo": repo_key,
+                    "upload_retry_total": retry_total,
+                    "upload_verify_failed_total": verify_failed_total,
+                    "upload_queue_depth": queue_depth,
+                }
+            )
+        return {"mode": str(getattr(config, "storage_mode", "local") or "local"), "totals": totals, "repos": repos}
+
+    def sync_webdav_cache(self, *, prune: bool = False) -> dict[str, Any]:
+        with self._lock:
+            config = copy.deepcopy(self._config) if self._config is not None else None
+        if config is None:
+            raise RuntimeError("Config not loaded")
+        mode = str(getattr(config, "storage_mode", "local") or "local")
+        cache_root = config.download_dir / ".webdav_cache"
+        if mode != "webdav":
+            return {
+                "mode": mode,
+                "prune": bool(prune),
+                "totals": {
+                    "repos_processed": 0,
+                    "cache_files_checked": 0,
+                    "expected_files": 0,
+                    "stale_files": 0,
+                    "missing_files": 0,
+                    "pruned_files": 0,
+                },
+                "items": [],
+            }
+
+        state = load_state(config.state_file)
+        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
+
+        totals = {
+            "repos_processed": 0,
+            "cache_files_checked": 0,
+            "expected_files": 0,
+            "stale_files": 0,
+            "missing_files": 0,
+            "pruned_files": 0,
+        }
+        items: list[dict[str, Any]] = []
+
+        for repo_key, repo_state in repos_state.items():
+            if not isinstance(repo_key, str) or "/" not in repo_key:
+                continue
+            if not isinstance(repo_state, dict):
+                repo_state = {}
+            owner, repo = repo_key.split("/", 1)
+            cache_repo_dir = cache_root / owner / repo
+            releases = repo_state.get("releases", {}) if isinstance(repo_state.get("releases"), dict) else {}
+            expected: set[str] = set()
+            for tag, entry in releases.items():
+                if not isinstance(tag, str) or not tag:
+                    continue
+                entry_dict = entry if isinstance(entry, dict) else {}
+                assets = entry_dict.get("downloaded_assets", [])
+                tag_dir = _sanitize_path_component(tag)
+                if isinstance(assets, list):
+                    for asset in assets:
+                        if not isinstance(asset, str) or not asset:
+                            continue
+                        expected.add(f"{tag_dir}/{asset}")
+
+            existing: set[str] = set()
+            if cache_repo_dir.exists():
+                for p in cache_repo_dir.rglob("*"):
+                    if p.is_file():
+                        try:
+                            existing.add(str(p.relative_to(cache_repo_dir)).replace("\\", "/"))
+                        except Exception:
+                            continue
+
+            stale = sorted(existing - expected)
+            missing = sorted(expected - existing)
+            pruned = 0
+            if prune:
+                for rel in stale:
+                    p = cache_repo_dir / rel
+                    try:
+                        p.unlink()
+                        pruned += 1
+                    except FileNotFoundError:
+                        continue
+                    except Exception:
+                        continue
+
+            totals["repos_processed"] += 1
+            totals["cache_files_checked"] += len(existing)
+            totals["expected_files"] += len(expected)
+            totals["stale_files"] += len(stale)
+            totals["missing_files"] += len(missing)
+            totals["pruned_files"] += pruned
+            items.append(
+                {
+                    "repo": repo_key,
+                    "cache_files_checked": len(existing),
+                    "expected_files": len(expected),
+                    "stale_files": len(stale),
+                    "missing_files": len(missing),
+                    "pruned_files": pruned,
+                    "stale_examples": stale[:10],
+                    "missing_examples": missing[:10],
+                }
+            )
+
+        return {"mode": mode, "prune": bool(prune), "totals": totals, "items": items}
+
+    def preview_cleanup(self, repo: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            config = copy.deepcopy(self._config) if self._config is not None else None
+        if config is None:
+            raise RuntimeError("Config not loaded")
+        state = load_state(config.state_file)
+        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
+
+        cfg_by_key: dict[str, RepoConfig] = {}
+        for repo_cfg in config.repos:
+            try:
+                cfg_by_key[_repo_key_from_spec(repo_cfg.name)] = repo_cfg
+            except Exception:
+                cfg_by_key[repo_cfg.name] = repo_cfg
+
+        def _entry_sort_key(entry: dict[str, Any]) -> datetime:
+            for field in ("published_at", "created_at", "processed_at"):
+                raw = entry.get(field)
+                if not isinstance(raw, str) or not raw.strip():
+                    continue
+                try:
+                    dt = datetime.fromisoformat(raw)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+                except Exception:
+                    continue
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+        def _build_for_repo(repo_key: str) -> dict[str, Any]:
+            repo_cfg = cfg_by_key.get(repo_key)
+            if repo_cfg is None:
+                raise ValueError("unknown repo")
+            keep_last = int(repo_cfg.keep_last or config.keep_last)
+            repo_state = repos_state.get(repo_key, {}) if isinstance(repos_state.get(repo_key), dict) else {}
+            releases = repo_state.get("releases", {}) if isinstance(repo_state.get("releases"), dict) else {}
+            rows: list[tuple[str, datetime]] = []
+            for tag, entry in releases.items():
+                if not isinstance(tag, str) or not tag:
+                    continue
+                if not isinstance(entry, dict):
+                    entry = {}
+                rows.append((tag, _entry_sort_key(entry)))
+            rows.sort(key=lambda x: x[1], reverse=True)
+            keep_tags = [tag for tag, _ in rows[:keep_last]]
+            delete_tags = [tag for tag, _ in rows[keep_last:]]
+            return {
+                "repo": repo_key,
+                "keep_last": keep_last,
+                "keep_tags": keep_tags,
+                "delete_tags": delete_tags,
+                "delete_count": len(delete_tags),
+            }
+
+        if repo is not None:
+            repo_key = _repo_key_from_spec(str(repo))
+            return _build_for_repo(repo_key)
+
+        items = []
+        for repo_key in sorted(cfg_by_key.keys()):
+            items.append(_build_for_repo(repo_key))
+        return {"items": items}
 
     def list_repo_summaries(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -1117,6 +1402,34 @@ class AuthService:
         self._ttl = max(60, int(session_ttl_seconds))
         self._lock = threading.Lock()
         self._sessions: dict[str, float] = {}
+        self._failed_attempts: dict[str, list[float]] = {}
+        self._max_failures = 6
+        self._window_seconds = 5 * 60
+
+    def _prune_failures_locked(self, key: str, *, now: float) -> list[float]:
+        entries = [x for x in self._failed_attempts.get(key, []) if now - x <= self._window_seconds]
+        if entries:
+            self._failed_attempts[key] = entries
+        else:
+            self._failed_attempts.pop(key, None)
+        return entries
+
+    def _record_failure(self, key: str) -> None:
+        now = time.time()
+        with self._lock:
+            entries = self._prune_failures_locked(key, now=now)
+            entries.append(now)
+            self._failed_attempts[key] = entries
+
+    def _clear_failures(self, key: str) -> None:
+        with self._lock:
+            self._failed_attempts.pop(key, None)
+
+    def _is_rate_limited(self, key: str) -> bool:
+        now = time.time()
+        with self._lock:
+            entries = self._prune_failures_locked(key, now=now)
+            return len(entries) >= self._max_failures
 
     def create_session(self, username: str) -> str:
         token = secrets.token_urlsafe(32)
@@ -1144,10 +1457,17 @@ class AuthService:
                 return False
         return True
 
-    def login(self, username: str, password: str) -> str | None:
+    def login(self, username: str, password: str, client_key: str | None = None) -> tuple[str | None, str | None]:
+        key = str(client_key or "").strip() or "unknown"
+        if self._is_rate_limited(key):
+            return None, "rate_limited"
         if not self._app.verify_login(username, password):
-            return None
-        return self.create_session(username)
+            self._record_failure(key)
+            if self._is_rate_limited(key):
+                return None, "rate_limited"
+            return None, "invalid_credentials"
+        self._clear_failures(key)
+        return self.create_session(username), None
 
     @staticmethod
     def get_token_from_cookie(cookie_header: str | None) -> str | None:
@@ -1188,17 +1508,60 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "internal_error"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
-        # Minimal CORS preflight support (useful when calling API from other origins).
+        # CORS preflight: only echo same-origin requests.
         split = urlsplit(self.path)
         if split.path.startswith("/api/"):
+            origin = self._allowed_cors_origin()
+            if origin is None:
+                self.send_response(HTTPStatus.FORBIDDEN)
+                self.end_headers()
+                return
             self.send_response(HTTPStatus.NO_CONTENT)
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.end_headers()
             return
         self.send_response(HTTPStatus.NO_CONTENT)
         self.end_headers()
+
+    def _client_ip(self) -> str:
+        xff = str(self.headers.get("X-Forwarded-For") or "").strip()
+        if xff:
+            return xff.split(",")[0].strip()
+        return str(self.client_address[0] if self.client_address else "unknown")
+
+    def _is_secure_request(self) -> bool:
+        xfp = str(self.headers.get("X-Forwarded-Proto") or "").strip().lower()
+        if xfp:
+            return xfp == "https"
+        forwarded = str(self.headers.get("Forwarded") or "").lower()
+        if "proto=https" in forwarded:
+            return True
+        return bool(getattr(self.server, "server_port", None) == 443)
+
+    def _allowed_cors_origin(self) -> str | None:
+        origin = str(self.headers.get("Origin") or "").strip()
+        if not origin:
+            return None
+        try:
+            origin_split = urlsplit(origin)
+            host = str(self.headers.get("Host") or "").strip().lower()
+            if not origin_split.netloc or not host:
+                return None
+            if origin_split.netloc.lower() != host:
+                return None
+            return origin
+        except Exception:
+            return None
+
+    def _set_cors_headers(self) -> None:
+        origin = self._allowed_cors_origin()
+        if origin is None:
+            return
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")
 
     def _handle(self) -> None:
         split = urlsplit(self.path)
@@ -1234,15 +1597,30 @@ class Handler(BaseHTTPRequestHandler):
                 return
             username = str(payload.get("username") or "")
             password = str(payload.get("password") or "")
-            token = self.server.auth.login(username, password)
+            token, error_code = self.server.auth.login(username, password, self._client_ip())
             if token is None:
+                if error_code == "rate_limited":
+                    self._send_json({"error": "rate_limited"}, status=HTTPStatus.TOO_MANY_REQUESTS)
+                    return
                 self._send_json({"error": "invalid_credentials"}, status=HTTPStatus.UNAUTHORIZED)
                 return
 
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Set-Cookie", f"grw_session={token}; Path=/; HttpOnly; SameSite=Lax")
-            body = json.dumps({"ok": True, "user": {"username": self.server.app.auth_username()}}, ensure_ascii=False).encode("utf-8")
+            cookie_flags = "Path=/; HttpOnly; SameSite=Lax"
+            if self._is_secure_request():
+                cookie_flags += "; Secure"
+            self.send_header("Set-Cookie", f"grw_session={token}; {cookie_flags}")
+            body = json.dumps(
+                {
+                    "ok": True,
+                    "user": {
+                        "username": self.server.app.auth_username(),
+                        "must_change_password": self.server.app.must_change_password(),
+                    },
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -1253,7 +1631,10 @@ class Handler(BaseHTTPRequestHandler):
             self.server.auth.delete_session(token)
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Set-Cookie", "grw_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+            cookie_flags = "Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+            if self._is_secure_request():
+                cookie_flags += "; Secure"
+            self.send_header("Set-Cookie", f"grw_session=; {cookie_flags}")
             body = json.dumps({"ok": True}, ensure_ascii=False).encode("utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -1264,8 +1645,20 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "unauthorized"}, status=HTTPStatus.UNAUTHORIZED)
             return
 
+        if self.server.app.must_change_password() and self.command in ("POST", "PUT"):
+            if path not in ("/api/v1/settings", "/api/v1/logout"):
+                self._send_json({"error": "password_change_required"}, status=HTTPStatus.FORBIDDEN)
+                return
+
         if path == "/api/v1/me" and self.command == "GET":
-            self._send_json({"user": {"username": self.server.app.auth_username()}})
+            self._send_json(
+                {
+                    "user": {
+                        "username": self.server.app.auth_username(),
+                        "must_change_password": self.server.app.must_change_password(),
+                    }
+                }
+            )
             return
 
         if path == "/api/v1/status" and self.command == "GET":
@@ -1353,6 +1746,37 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"state": state})
             return
 
+        if path == "/api/v1/storage/capabilities" and self.command == "GET":
+            try:
+                payload = self.server.app.get_storage_capabilities()
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(payload)
+            return
+
+        if path == "/api/v1/storage/health" and self.command == "GET":
+            try:
+                payload = self.server.app.get_storage_health()
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(payload)
+            return
+
+        if path == "/api/v1/storage/sync-cache" and self.command == "POST":
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            prune = bool(payload.get("prune", False))
+            try:
+                result = self.server.app.sync_webdav_cache(prune=prune)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(result)
+            return
+
         if path == "/api/v1/storage/test" and self.command == "POST":
             payload = self._read_json_body()
             if payload is None:
@@ -1367,6 +1791,19 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
                 return
             self._send_json({"ok": True})
+            return
+
+        if path == "/api/v1/cleanup/preview" and self.command == "POST":
+            payload = self._read_json_body()
+            if payload is None:
+                return
+            repo = payload.get("repo")
+            try:
+                preview = self.server.app.preview_cleanup(repo=repo if isinstance(repo, str) and repo.strip() else None)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(preview)
             return
 
         if path == "/api/v1/run" and self.command == "POST":
@@ -1444,7 +1881,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         if self.path.startswith("/api/"):
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._set_cors_headers()
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)

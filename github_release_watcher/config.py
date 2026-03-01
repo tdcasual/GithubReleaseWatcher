@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import os
 import re
-import tomllib
+try:  # Python 3.11+
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - fallback for local/dev environments
+    import tomli as tomllib  # type: ignore
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -25,6 +28,12 @@ class WebDAVConfig:
     password: str | None = None
     verify_tls: bool = True
     timeout_seconds: int = 60
+    upload_concurrency: int = 2
+    max_retries: int = 3
+    retry_backoff_seconds: int = 2
+    verify_after_upload: bool = True
+    upload_temp_suffix: str = ".uploading"
+    cleanup_mode: str = "delete"  # delete | trash
 
 
 @dataclass
@@ -210,6 +219,18 @@ def load_config(path: Path) -> AppConfig:
             config.webdav.verify_tls = bool(webdav.get("verify_tls", True))
         if "timeout_seconds" in webdav:
             config.webdav.timeout_seconds = int(webdav.get("timeout_seconds") or 60)
+        if "upload_concurrency" in webdav:
+            config.webdav.upload_concurrency = int(webdav.get("upload_concurrency") or 2)
+        if "max_retries" in webdav:
+            config.webdav.max_retries = int(webdav.get("max_retries") or 3)
+        if "retry_backoff_seconds" in webdav:
+            config.webdav.retry_backoff_seconds = int(webdav.get("retry_backoff_seconds") or 2)
+        if "verify_after_upload" in webdav:
+            config.webdav.verify_after_upload = bool(webdav.get("verify_after_upload", True))
+        if "upload_temp_suffix" in webdav:
+            config.webdav.upload_temp_suffix = str(webdav.get("upload_temp_suffix") or "").strip()
+        if "cleanup_mode" in webdav:
+            config.webdav.cleanup_mode = str(webdav.get("cleanup_mode") or "").strip().lower()
 
     if config.interval_seconds <= 0:
         raise ConfigError("interval_seconds must be > 0")
@@ -217,6 +238,18 @@ def load_config(path: Path) -> AppConfig:
         raise ConfigError("keep_last must be > 0")
     if config.storage_mode == "webdav" and not str(config.webdav.base_url or "").strip():
         raise ConfigError("storage.webdav.base_url is required when storage.mode = 'webdav'")
+    if config.webdav.upload_concurrency <= 0 or config.webdav.upload_concurrency > 32:
+        raise ConfigError("storage.webdav.upload_concurrency must be between 1 and 32")
+    if config.webdav.max_retries <= 0 or config.webdav.max_retries > 20:
+        raise ConfigError("storage.webdav.max_retries must be between 1 and 20")
+    if config.webdav.retry_backoff_seconds <= 0 or config.webdav.retry_backoff_seconds > 300:
+        raise ConfigError("storage.webdav.retry_backoff_seconds must be between 1 and 300")
+    if not isinstance(config.webdav.upload_temp_suffix, str) or not config.webdav.upload_temp_suffix:
+        raise ConfigError("storage.webdav.upload_temp_suffix must be a non-empty string")
+    if "/" in config.webdav.upload_temp_suffix or "\\" in config.webdav.upload_temp_suffix:
+        raise ConfigError("storage.webdav.upload_temp_suffix cannot contain path separators")
+    if config.webdav.cleanup_mode not in ("delete", "trash"):
+        raise ConfigError("storage.webdav.cleanup_mode must be 'delete' or 'trash'")
 
     for idx, repo_cfg in enumerate(config.repos):
         if repo_cfg.keep_last is not None and repo_cfg.keep_last <= 0:
