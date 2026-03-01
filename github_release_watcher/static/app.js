@@ -471,6 +471,12 @@ function setBatchActionHint(message, kind) {
   el.textContent = String(message || "");
 }
 
+function setControlDisabledWithReason(btn, disabled, reason) {
+  if (!btn) return;
+  btn.disabled = !!disabled;
+  btn.title = disabled && reason ? String(reason) : "";
+}
+
 function updateBatchControlsUI() {
   const countEl = $("batchSelectedCount");
   const selectVisibleBtn = $("batchSelectVisibleBtn");
@@ -489,22 +495,28 @@ function updateBatchControlsUI() {
   const runnableCount = selected.filter((key) => isRepoEnabledForRun(key)).length;
   const count = selected.length;
   if (countEl) countEl.textContent = `已选 ${count} 个仓库（当前筛选 ${visible.length} 个，可检查 ${runnableCount} 个）`;
-  const disabled = !config || count <= 0;
-  const visibleDisabled = !config || visible.length <= 0;
-  if (selectVisibleBtn) selectVisibleBtn.disabled = isBusy(selectVisibleBtn) || visibleDisabled;
-  if (invertVisibleBtn) invertVisibleBtn.disabled = isBusy(invertVisibleBtn) || visibleDisabled;
-  if (selectEnabledBtn) selectEnabledBtn.disabled = isBusy(selectEnabledBtn) || visibleDisabled;
-  if (selectErrorBtn) selectErrorBtn.disabled = isBusy(selectErrorBtn) || visibleDisabled;
+  const missingConfig = !config;
+  const selectedMissing = count <= 0;
+  const visibleMissing = visible.length <= 0;
+  const disabled = missingConfig || selectedMissing;
+  const visibleDisabled = missingConfig || visibleMissing;
+  const visibleReason = missingConfig ? "配置未加载。" : visibleMissing ? "当前筛选结果为空。" : "";
+  if (selectVisibleBtn) setControlDisabledWithReason(selectVisibleBtn, isBusy(selectVisibleBtn) || visibleDisabled, visibleReason);
+  if (invertVisibleBtn) setControlDisabledWithReason(invertVisibleBtn, isBusy(invertVisibleBtn) || visibleDisabled, visibleReason);
+  if (selectEnabledBtn) setControlDisabledWithReason(selectEnabledBtn, isBusy(selectEnabledBtn) || visibleDisabled, visibleReason);
+  if (selectErrorBtn) setControlDisabledWithReason(selectErrorBtn, isBusy(selectErrorBtn) || visibleDisabled, visibleReason);
   if (selectCacheAnomalyBtn) {
-    selectCacheAnomalyBtn.disabled = isBusy(selectCacheAnomalyBtn) || visibleDisabled || !cacheSelectReady;
-    if (!webdavMode) selectCacheAnomalyBtn.title = "当前存储模式不是 WebDAV。";
-    else if (!hasSyncCacheSnapshot) selectCacheAnomalyBtn.title = '请先在设置中执行一次“同步缓存”。';
-    else selectCacheAnomalyBtn.title = "";
+    let reason = visibleReason;
+    if (!reason && !webdavMode) reason = "当前存储模式不是 WebDAV。";
+    else if (!reason && !hasSyncCacheSnapshot) reason = '请先在设置中执行一次“同步缓存”。';
+    setControlDisabledWithReason(selectCacheAnomalyBtn, isBusy(selectCacheAnomalyBtn) || visibleDisabled || !cacheSelectReady, reason);
   }
-  if (runBtn) runBtn.disabled = isBusy(runBtn) || !config || runnableCount <= 0;
-  if (enableBtn) enableBtn.disabled = isBusy(enableBtn) || disabled;
-  if (disableBtn) disableBtn.disabled = isBusy(disableBtn) || disabled;
-  if (clearBtn) clearBtn.disabled = !config || count <= 0;
+  const runReason = missingConfig ? "配置未加载。" : selectedMissing ? "请先选择至少一个仓库。" : runnableCount <= 0 ? "所选仓库均为停用状态。" : "";
+  if (runBtn) setControlDisabledWithReason(runBtn, isBusy(runBtn) || missingConfig || runnableCount <= 0, runReason);
+  const selectReason = missingConfig ? "配置未加载。" : selectedMissing ? "请先选择至少一个仓库。" : "";
+  if (enableBtn) setControlDisabledWithReason(enableBtn, isBusy(enableBtn) || disabled, selectReason);
+  if (disableBtn) setControlDisabledWithReason(disableBtn, isBusy(disableBtn) || disabled, selectReason);
+  if (clearBtn) setControlDisabledWithReason(clearBtn, missingConfig || selectedMissing, selectReason);
 }
 
 function renderTypeChips(container, selected, onChange) {
