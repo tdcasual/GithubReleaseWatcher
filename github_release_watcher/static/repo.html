@@ -39,6 +39,7 @@
             <div class="card-actions">
               <button class="btn section-toggle" type="button" data-target="summaryBody">折叠</button>
               <button id="copySummaryBtn" class="btn" type="button">复制摘要</button>
+              <button id="copyDiagBtn" class="btn" type="button">复制诊断包</button>
             </div>
           </div>
 
@@ -101,8 +102,18 @@
               <div class="kv-k">上传队列深度</div>
               <div id="uploadQueueDepth" class="kv-v">0</div>
             </div>
+            <div class="kv-item">
+              <div class="kv-k">检查成功率</div>
+              <div id="checksSuccessRatio" class="kv-v">-</div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-k">下载成功率</div>
+              <div id="downloadSuccessRatio" class="kv-v">-</div>
+            </div>
           </div>
             <p id="updateHint" class="hint"></p>
+            <p id="uploadHealthHint" class="hint"></p>
+            <p id="runFeedbackHint" class="hint"></p>
             <p id="errorHint" class="hint danger"></p>
           </div>
         </section>

@@ -43,6 +43,7 @@ let repoKey = null;
 let releasesCount = null;
 let recentDeletedTags = [];
 let mustChangePassword = false;
+let latestRepoStats = {};
 
 function isoToLocal(iso) {
   if (!iso) return "-";
@@ -106,6 +107,15 @@ function formatApiError(codeOrMessage) {
   if (raw === "rate_limited") return "登录过于频繁，请稍后再试。";
   if (raw === "password_change_required") return "请先在主页面设置中修改默认账号密码。";
   return raw || "未知错误";
+}
+
+function formatPercent(numerator, denominator) {
+  const den = Number(denominator || 0);
+  if (!Number.isFinite(den) || den <= 0) return "-";
+  const num = Number(numerator || 0);
+  if (!Number.isFinite(num) || num < 0) return "-";
+  const pct = (num / den) * 100;
+  return `${pct.toFixed(1)}% (${num}/${den})`;
 }
 
 function renderSecurityBanner() {
@@ -232,6 +242,7 @@ async function loadSummary() {
   const data = await API.get(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`);
   const info = data.repo || {};
   const stats = info.stats || {};
+  latestRepoStats = stats;
   const update = info.update || {};
 
   const current = stats.current_tag || stats.latest_release_tag || "-";
@@ -249,11 +260,18 @@ async function loadSummary() {
   $("uploadRetryTotal").textContent = String(stats.upload_retry_total ?? 0);
   $("uploadVerifyFailedTotal").textContent = String(stats.upload_verify_failed_total ?? 0);
   $("uploadQueueDepth").textContent = String(stats.upload_queue_depth ?? 0);
+  const checksTotal = Number(stats.checks_total ?? 0);
+  const checksOk = Number(stats.checks_ok ?? 0);
+  $("checksSuccessRatio").textContent = formatPercent(checksOk, checksTotal);
+  const downloadOk = Number(stats.download_assets_total ?? 0);
+  const downloadErr = Number(stats.download_errors_total ?? 0);
+  $("downloadSuccessRatio").textContent = formatPercent(downloadOk, downloadOk + downloadErr);
 
   const median = update.median_interval_seconds;
   const mean = update.mean_interval_seconds;
   const sample = update.sample_count ?? 0;
   $("updateHint").textContent = `更新频率统计：median=${secondsToHuman(median)}，mean=${secondsToHuman(mean)}（样本 ${sample}）。`;
+  $("uploadHealthHint").textContent = `上传健康：重试 ${stats.upload_retry_total ?? 0}，校验失败 ${stats.upload_verify_failed_total ?? 0}，队列 ${stats.upload_queue_depth ?? 0}`;
 
   buildBadge(stats.last_check_ok ? "正常" : stats.last_check_ok === false ? "上次有错误" : "未知", stats.last_check_ok ? "ok" : "warn");
   if (mustChangePassword) renderSecurityBanner();
@@ -347,8 +365,17 @@ function initSectionToggles() {
 }
 
 async function runRepoNow() {
+  const hint = $("runFeedbackHint");
+  if (hint) {
+    hint.className = "hint";
+    hint.textContent = "";
+  }
   if (mustChangePassword) {
     renderSecurityBanner();
+    if (hint) {
+      hint.className = "hint danger";
+      hint.textContent = "当前账号需先修改密码，已阻止触发。";
+    }
     toast("当前账号需先修改密码，请先返回主页设置。", "warn");
     return;
   }
@@ -356,13 +383,68 @@ async function runRepoNow() {
   setButtonBusy(btn, true, "检查中…");
   try {
     const res = await withAuth(() => API.post("/run", { repo: repoKey }));
-    if (res.error) toast(`触发失败：${formatApiError(res.error)}`, "bad");
-    else toast(res.queued ? "已加入队列。" : "任务已在运行/队列中。", "ok");
+    if (res.error) {
+      if (hint) {
+        hint.className = "hint danger";
+        hint.textContent = `触发失败：${formatApiError(res.error)}`;
+      }
+      toast(`触发失败：${formatApiError(res.error)}`, "bad");
+    } else {
+      if (hint) {
+        hint.className = "hint";
+        hint.textContent = res.queued
+          ? `已加入队列：${new Date().toLocaleTimeString()}`
+          : `任务已在运行/队列中：${new Date().toLocaleTimeString()}`;
+      }
+      toast(res.queued ? "已加入队列。" : "任务已在运行/队列中。", "ok");
+    }
   } catch (e) {
+    if (hint) {
+      hint.className = "hint danger";
+      hint.textContent = `触发失败：${formatApiError(e?.message || e)}`;
+    }
     toast(formatApiError(e?.message || e), "bad");
   } finally {
     setButtonBusy(btn, false);
   }
+}
+
+function buildDiagnosticBundle() {
+  const stats = latestRepoStats || {};
+  const activityLines = String($("activity").textContent || "")
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, 30);
+  const releasesLines = String($("releases").textContent || "")
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+  return [
+    `仓库: ${repoKey}`,
+    `生成时间: ${new Date().toLocaleString()}`,
+    `状态徽章: ${$("statusBadge").textContent || "-"}`,
+    `当前版本: ${$("currentTag").textContent || "-"}`,
+    `下次检查: ${$("nextRunAt").textContent || "-"}`,
+    `上次检查: ${$("lastCheckAt").textContent || "-"}`,
+    `推荐检查间隔: ${$("recommendedInterval").textContent || "-"}`,
+    `检查成功率: ${$("checksSuccessRatio").textContent || "-"}`,
+    `下载成功率: ${$("downloadSuccessRatio").textContent || "-"}`,
+    `最近错误: ${$("errorHint").textContent || "无"}`,
+    `上传健康: ${$("uploadHealthHint").textContent || "-"}`,
+    `统计快照: checks_total=${stats.checks_total ?? 0}, checks_ok=${stats.checks_ok ?? 0}, checks_network_failed=${
+      stats.checks_network_failed ?? 0
+    }, download_assets_total=${stats.download_assets_total ?? 0}, download_errors_total=${stats.download_errors_total ?? 0}, upload_retry_total=${
+      stats.upload_retry_total ?? 0
+    }, upload_verify_failed_total=${stats.upload_verify_failed_total ?? 0}, upload_queue_depth=${stats.upload_queue_depth ?? 0}`,
+    "",
+    "[最近版本 20 条]",
+    ...(releasesLines.length ? releasesLines : ["(无)"]),
+    "",
+    "[最近活动 30 条]",
+    ...(activityLines.length ? activityLines : ["(无)"]),
+  ].join("\n");
 }
 
 async function main() {
@@ -407,6 +489,11 @@ async function main() {
     ].join("\n");
     const ok = await copyText(summary);
     toast(ok ? "已复制摘要。" : "复制失败。", ok ? "ok" : "warn");
+  });
+  $("copyDiagBtn").addEventListener("click", async () => {
+    const payload = buildDiagnosticBundle();
+    const ok = await copyText(payload);
+    toast(ok ? "已复制诊断包。" : "复制失败。", ok ? "ok" : "warn");
   });
 
   await requireLogin();
