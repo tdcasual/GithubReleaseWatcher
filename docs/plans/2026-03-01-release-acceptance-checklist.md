@@ -79,6 +79,7 @@ Notes:
 - 已补充弹窗打开态交互：打开弹窗时自动隐藏底部导航并锁定背景滚动，关闭后恢复，避免误触。
 - 已增强移动端反馈可见性：批量/WebDAV/仓库运行提示在超出视口时自动滚动到可视区。
 - 已将移动端输入控件字号提升到 16px，降低 iOS Safari 自动放大干扰。
+- 已补充 `viewport-fit=cover`，与 `safe-area` 内边距策略保持一致，降低刘海屏/底部手势区遮挡风险。
 - 已增加日志区触控可用性提示与边界强化（可滚动提示 + 内阴影边界 + 惯性滚动优化）。
 - 已优化日志/版本/活动列表自动刷新阅读体验：刷新时保留滚动位置（用户未停留底部时），并在用户滚动后自动收起“可滑动提示”。
 - 已增强粗指针设备按压反馈（按钮按压缩放/亮度反馈），降低点击不确定感。
@@ -103,6 +104,7 @@ Notes:
 - 已补充仓库行交互控件 `aria-label`、折叠按钮 `aria-expanded/aria-controls` 语义、移动导航 `:focus-visible` 样式。
 - 已补充移动导航 `aria-current` 当前区块语义与滚动同步更新。
 - 已兼容 `prefers-reduced-motion`：移动导航锚点滚动在减少动效偏好下改为非动画跳转。
+- 已提升浅色主题次级文案颜色对比度（`--muted`），改善说明文本可读性。
 - 待办：在桌面与移动端进行键盘流手工勾选确认。
 
 ---
@@ -136,13 +138,14 @@ Notes:
 
 ## 7. Automated Regression Evidence
 
-Run time (UTC+8): 2026-03-01 17:10 CST
+Run time (UTC+8): 2026-03-01 18:17 CST
 
 Commands:
 
 ```bash
 node --check github_release_watcher/static/app.js
 node --check github_release_watcher/static/repo.js
+python3 -m unittest tests.test_ui_mobile_accessibility -v
 python3 -m unittest tests.test_auth_security tests.test_downloader_behavior tests.test_state_robustness tests.test_watcher_webdav_parallel tests.test_watcher_webdav_stats_safety tests.test_webapp_api_smoke tests.test_webdav_reliability -v
 ```
 
@@ -154,6 +157,7 @@ Results:
 Evidence notes:
 - `node --check github_release_watcher/static/app.js` passed.
 - `node --check github_release_watcher/static/repo.js` passed.
+- `python3 -m unittest tests.test_ui_mobile_accessibility -v` passed (2 tests).
 - `python3 -m unittest tests.test_auth_security tests.test_downloader_behavior tests.test_state_robustness tests.test_watcher_webdav_parallel tests.test_watcher_webdav_stats_safety tests.test_webapp_api_smoke tests.test_webdav_reliability -v` passed (17 tests).
 - 2026-03-01 12:00 CST rerun (after batch-toolbar disabled-reason polish): same command set passed.
 - 2026-03-01 12:04 CST rerun (after aria-live accessibility polish): same command set passed.
@@ -168,6 +172,7 @@ Evidence notes:
 - 2026-03-01 17:06 CST rerun (after repo page activity/releases auto-refresh scroll-context polish): same command set passed.
 - 2026-03-01 17:09 CST rerun (after acceptance status checker tooling integration): same command set passed.
 - 2026-03-01 17:55 CST rerun (after mobile nav anchor-state consistency fix): same command set passed.
+- 2026-03-01 18:17 CST rerun (after muted contrast + viewport-fit=cover fixes): same command set + `test_ui_mobile_accessibility` passed.
 - Follow-up: `urllib3` reported `NotOpenSSLWarning` on local Python runtime (`LibreSSL 2.8.3`); does not block current functional checks.
 
 ---
