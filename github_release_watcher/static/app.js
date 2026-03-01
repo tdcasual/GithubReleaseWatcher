@@ -95,6 +95,89 @@ function focusIfPossible(el) {
   }
 }
 
+function setupMobileSectionNav() {
+  const nav = document.querySelector(".mobile-nav");
+  if (!nav) return;
+  const links = Array.from(nav.querySelectorAll('.mobile-nav-item[href^="#"]'));
+  if (!links.length) return;
+
+  const items = links
+    .map((link) => {
+      const raw = String(link.getAttribute("href") || "");
+      const id = raw.startsWith("#") ? raw.slice(1) : "";
+      const section = id ? document.getElementById(id) : null;
+      return section ? { id, section, link } : null;
+    })
+    .filter(Boolean);
+  if (!items.length) return;
+  items.sort((a, b) => a.section.offsetTop - b.section.offsetTop);
+
+  const topOffset = () => {
+    const topbar = document.querySelector(".topbar");
+    return Math.ceil((topbar?.getBoundingClientRect().height || 0) + 16);
+  };
+
+  const setActive = (id) => {
+    for (const item of items) {
+      const active = item.id === id;
+      item.link.classList.toggle("active", active);
+      if (active) item.link.setAttribute("aria-current", "page");
+      else item.link.removeAttribute("aria-current");
+    }
+  };
+
+  const scrollToSection = (id) => {
+    const target = document.getElementById(id);
+    if (!target) return;
+    const targetY = window.scrollY + target.getBoundingClientRect().top - topOffset();
+    window.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+    if (history.replaceState) history.replaceState(null, "", `#${id}`);
+  };
+
+  for (const item of items) {
+    item.link.addEventListener("click", (e) => {
+      e.preventDefault();
+      setActive(item.id);
+      scrollToSection(item.id);
+    });
+  }
+
+  let ticking = false;
+  const updateByScroll = () => {
+    ticking = false;
+    const probeY = topOffset() + 24;
+    let current = items[0];
+    for (const item of items) {
+      if (item.section.getBoundingClientRect().top <= probeY) current = item;
+      else break;
+    }
+    setActive(current.id);
+  };
+  const requestUpdate = () => {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(updateByScroll);
+  };
+
+  window.addEventListener("scroll", requestUpdate, { passive: true });
+  window.addEventListener("resize", requestUpdate);
+  window.addEventListener("hashchange", () => {
+    const id = (location.hash || "").replace(/^#/, "");
+    if (!id) return;
+    const item = items.find((x) => x.id === id);
+    if (item) setActive(item.id);
+  });
+
+  const currentHashId = (location.hash || "").replace(/^#/, "");
+  if (currentHashId) {
+    const current = items.find((x) => x.id === currentHashId);
+    if (current) setActive(current.id);
+    else requestUpdate();
+  } else {
+    requestUpdate();
+  }
+}
+
 function isBusy(el) {
   return el?.getAttribute("aria-busy") === "true";
 }
@@ -1990,6 +2073,7 @@ async function requireLogin() {
 
 async function main() {
   wireEvents();
+  setupMobileSectionNav();
   setConfigLoadedUI(false);
   $("logoutBtn").disabled = true;
   setUser(null);

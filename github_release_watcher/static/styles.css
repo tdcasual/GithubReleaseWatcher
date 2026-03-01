@@ -13,6 +13,7 @@
   --focus: 0 0 0 3px rgba(0, 149, 246, 0.28);
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+  --section-scroll-offset: 76px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -204,6 +205,7 @@ code {
   border-radius: 10px;
   cursor: pointer;
   min-height: 36px;
+  touch-action: manipulation;
 }
 
 .btn:hover {
@@ -500,7 +502,7 @@ select.input {
 #summarySection,
 #releasesSection,
 #activitySection {
-  scroll-margin-top: 76px;
+  scroll-margin-top: var(--section-scroll-offset);
 }
 
 .switch {
@@ -560,6 +562,7 @@ select.input {
   background: var(--card);
   color: var(--text);
   width: min(620px, calc(100vw - 24px));
+  max-height: min(92dvh, 840px);
 }
 
 .dialog::backdrop {
@@ -568,6 +571,9 @@ select.input {
 
 .dialog-form {
   padding: 14px;
+  max-height: min(92dvh, 840px);
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .dialog-head {
@@ -596,6 +602,7 @@ select.input {
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
+  touch-action: manipulation;
 }
 
 .icon-btn:hover {
@@ -643,6 +650,13 @@ select.input {
   display: none;
 }
 
+.mobile-nav-item.active,
+.mobile-nav-item[aria-current="page"] {
+  border-color: rgba(0, 149, 246, 0.55);
+  background: rgba(0, 149, 246, 0.12);
+  color: var(--primary);
+}
+
 @media (pointer: coarse) {
   .btn {
     min-height: 40px;
@@ -681,6 +695,10 @@ select.input {
 }
 
 @media (max-width: 640px) {
+  :root {
+    --section-scroll-offset: 104px;
+  }
+
   .app {
     padding: 14px 12px calc(74px + env(safe-area-inset-bottom));
   }
@@ -739,16 +757,25 @@ select.input {
   .dialog {
     width: min(680px, calc(100vw - 14px));
     border-radius: 12px;
+    max-height: calc(100dvh - 10px - env(safe-area-inset-top));
   }
 
   .dialog-form {
-    padding: 12px;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 14px - env(safe-area-inset-top));
   }
 
   .dialog-actions {
     display: grid;
     grid-template-columns: 1fr;
     gap: 8px;
+    position: sticky;
+    bottom: 0;
+    background: var(--card);
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    margin-top: 12px;
+    z-index: 1;
   }
 
   .card-actions {
@@ -772,24 +799,46 @@ select.input {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: stretch;
+    gap: 10px;
   }
 
   #batchSelectedCount {
     grid-column: 1 / -1;
+    padding: 6px 8px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
   }
 
   .batch-tools .btn {
     width: 100%;
+    min-height: 42px;
   }
 
   .repo-actions {
     width: 100%;
-    justify-content: flex-start;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
     gap: 8px;
   }
 
   .repo-select {
-    margin-right: auto;
+    grid-column: 1 / -1;
+    margin-right: 0;
+    justify-content: space-between;
+    min-height: 40px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 6px 8px;
+  }
+
+  .repo-actions .btn {
+    width: 100%;
+  }
+
+  .repo-actions .inline {
+    grid-column: 1 / -1;
+    justify-content: space-between;
   }
 
   .row {
@@ -823,6 +872,7 @@ select.input {
     text-decoration: none;
     font-size: 13px;
     font-weight: 600;
+    touch-action: manipulation;
   }
 
   .mobile-nav-item:active {
