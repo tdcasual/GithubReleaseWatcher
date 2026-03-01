@@ -434,6 +434,10 @@ function isRepoInErrorState(key) {
   return summary?.stats?.last_check_ok === false;
 }
 
+function isRepoInCacheAnomalyState(key) {
+  return lastSyncCacheAnomalyRepoKeys.has(String(key || ""));
+}
+
 function setBatchActionHint(message, kind) {
   const el = $("batchActionHint");
   if (!el) return;
@@ -447,6 +451,7 @@ function updateBatchControlsUI() {
   const invertVisibleBtn = $("batchInvertVisibleBtn");
   const selectEnabledBtn = $("batchSelectEnabledBtn");
   const selectErrorBtn = $("batchSelectErrorBtn");
+  const selectCacheAnomalyBtn = $("batchSelectCacheAnomalyBtn");
   const runBtn = $("batchRunBtn");
   const enableBtn = $("batchEnableBtn");
   const disableBtn = $("batchDisableBtn");
@@ -462,6 +467,7 @@ function updateBatchControlsUI() {
   if (invertVisibleBtn) invertVisibleBtn.disabled = isBusy(invertVisibleBtn) || visibleDisabled;
   if (selectEnabledBtn) selectEnabledBtn.disabled = isBusy(selectEnabledBtn) || visibleDisabled;
   if (selectErrorBtn) selectErrorBtn.disabled = isBusy(selectErrorBtn) || visibleDisabled;
+  if (selectCacheAnomalyBtn) selectCacheAnomalyBtn.disabled = isBusy(selectCacheAnomalyBtn) || visibleDisabled;
   if (runBtn) runBtn.disabled = isBusy(runBtn) || !config || runnableCount <= 0;
   if (enableBtn) enableBtn.disabled = isBusy(enableBtn) || disabled;
   if (disableBtn) disableBtn.disabled = isBusy(disableBtn) || disabled;
@@ -1131,6 +1137,14 @@ function batchSelectErrorVisible() {
   );
 }
 
+function batchSelectCacheAnomalyVisible() {
+  batchSelectByFilter(
+    (key) => isRepoInCacheAnomalyState(key),
+    (count) => `已选中 ${count} 个缓存异常仓库。`,
+    "当前筛选结果中没有可新增的缓存异常仓库（请先执行一次“同步缓存”）。"
+  );
+}
+
 async function batchSetEnabled(enabled, triggerBtn) {
   const selected = getSelectedRepoKeys();
   if (!selected.length) {
@@ -1545,6 +1559,7 @@ function wireEvents() {
   $("batchInvertVisibleBtn").addEventListener("click", batchInvertVisible);
   $("batchSelectEnabledBtn").addEventListener("click", batchSelectEnabledVisible);
   $("batchSelectErrorBtn").addEventListener("click", batchSelectErrorVisible);
+  $("batchSelectCacheAnomalyBtn").addEventListener("click", batchSelectCacheAnomalyVisible);
   $("batchRunBtn").addEventListener("click", async () => batchRunSelected($("batchRunBtn")));
   $("batchEnableBtn").addEventListener("click", async () => batchSetEnabled(true, $("batchEnableBtn")));
   $("batchDisableBtn").addEventListener("click", async () => batchSetEnabled(false, $("batchDisableBtn")));
