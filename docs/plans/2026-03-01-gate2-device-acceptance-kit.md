@@ -33,6 +33,12 @@ scripts/qa/manual_acceptance_bootstrap.sh --config config.toml --host 127.0.0.1 
 scripts/qa/new_gate2_report.sh
 ```
 
+若希望一次性生成 Gate 2 + Gate 3 报告与总览导航：
+
+```bash
+scripts/qa/new_acceptance_packet.sh
+```
+
 结束验收后：
 
 ```bash

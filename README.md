@@ -169,6 +169,7 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
   - `scripts/qa/manual_acceptance_stop.sh`
   - `scripts/qa/new_gate2_report.sh`
   - `scripts/qa/new_gate3_report.sh`
+  - `scripts/qa/new_acceptance_packet.sh`（一键生成 Gate 2 + Gate 3 报告与总览导航）
 
 ## 2026-03-01 收尾更新摘要
 

@@ -83,6 +83,7 @@ Notes:
 - 待办：在 iOS Safari / Android Chrome 真机完成触控可用性勾选。
 - 执行脚本与模板：`docs/plans/2026-03-01-gate2-device-acceptance-kit.md`、`docs/plans/2026-03-01-gate2-device-acceptance-template.md`。
 - 报告生成脚本：`scripts/qa/new_gate2_report.sh`（可自动预填日期/提交号/证据目录）。
+- 一键验收包脚本：`scripts/qa/new_acceptance_packet.sh`（同时生成 Gate 2/Gate 3 报告和总览导航）。
 
 ---
 
@@ -127,6 +128,7 @@ Notes:
 - 执行 runbook：`docs/plans/2026-03-01-gate3-webdav-critical-flow-runbook.md`。
 - 执行模板：`docs/plans/2026-03-01-gate3-webdav-critical-flow-template.md`。
 - 报告生成脚本：`scripts/qa/new_gate3_report.sh`（可自动预填日期/提交号/证据目录）。
+- 一键验收包脚本：`scripts/qa/new_acceptance_packet.sh`（同时生成 Gate 2/Gate 3 报告和总览导航）。
 
 ---
 
