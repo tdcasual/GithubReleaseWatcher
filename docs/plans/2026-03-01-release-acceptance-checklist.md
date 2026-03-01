@@ -110,7 +110,8 @@ Checks:
 - [ ] Non-WebDAV mode correctly disables cache-anomaly operations.
 
 Notes:
-- ________
+- 代码层已完成关键链路提示与守卫：缓存异常筛选/批量选择受 WebDAV 模式与同步快照前置条件限制。
+- 待办：使用真实 WebDAV 环境按 Run sequence 全链路走查，并勾选上述 5 项。
 
 ---
 
@@ -147,8 +148,17 @@ Evidence notes:
 ## 8. Release Sign-off
 
 - [ ] Checklist complete.
-- [ ] Known limitations documented.
-- [ ] Rollback plan prepared.
+- [x] Known limitations documented.
+- [x] Rollback plan prepared.
+
+Rollback plan:
+1. 回滚到上一个稳定提交（当前基线建议：`3522a7b` 之后的发布分支基线，或按发布标签回退）。
+2. 保留并恢复 `config.override.json`、`state.json` 与下载目录数据，不做数据文件删除操作。
+3. 仅回滚前端静态资源与文档提交时，先执行：
+   - `node --check github_release_watcher/static/app.js`
+   - `node --check github_release_watcher/static/repo.js`
+4. 回滚后执行最小冒烟：
+   - 登录 -> 首页加载 -> 单仓库“检查” -> 批量“检查” -> 设置页“测试 WebDAV”。
 
 Approver: ________  
 Date: ________
