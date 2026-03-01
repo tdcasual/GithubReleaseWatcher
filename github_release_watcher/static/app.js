@@ -64,6 +64,8 @@ let settingsDialogDraftSnapshot = null;
 let settingsDialogDirtyBefore = false;
 let settingsDialogAuthUsernameBefore = "";
 let settingsDialogSaved = false;
+let settingsDialogReturnFocusEl = null;
+let repoDialogReturnFocusEl = null;
 let lastWebdavTest = null;
 let mustChangePassword = false;
 let lastStorageHealthTotals = null;
@@ -73,6 +75,25 @@ let lastSyncCacheAnomalyRepoKeys = new Set();
 let hasSyncCacheSnapshot = false;
 
 const $ = (id) => document.getElementById(id);
+
+function getFocusableTriggerEl() {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return null;
+  if (!active.isConnected) return null;
+  return active;
+}
+
+function focusIfPossible(el) {
+  if (!(el instanceof HTMLElement)) return false;
+  if (!el.isConnected) return false;
+  if (el.matches(":disabled")) return false;
+  try {
+    el.focus();
+    return document.activeElement === el;
+  } catch {
+    return false;
+  }
+}
 
 function isBusy(el) {
   return el?.getAttribute("aria-busy") === "true";
@@ -1452,6 +1473,7 @@ function openRepoDialog() {
     toast("配置未加载。", "bad");
     return;
   }
+  repoDialogReturnFocusEl = getFocusableTriggerEl();
 
   $("newRepoName").value = "";
   $("newTypeInput").value = "";
@@ -1542,6 +1564,7 @@ function openSettingsDialog(options = {}) {
     toast("配置未加载。", "bad");
     return;
   }
+  settingsDialogReturnFocusEl = getFocusableTriggerEl();
   settingsDialogDraftSnapshot = cloneDeep(draft);
   settingsDialogDirtyBefore = dirty;
   settingsDialogAuthUsernameBefore = $("authUsername")?.value || "";
@@ -1658,6 +1681,8 @@ function wireEvents() {
     if (!ok) e.preventDefault();
   });
   settingsDialog.addEventListener("close", () => {
+    const returnFocusEl = settingsDialogReturnFocusEl;
+    settingsDialogReturnFocusEl = null;
     const saved = settingsDialogSaved;
     settingsDialogSaved = false;
 
@@ -1676,6 +1701,7 @@ function wireEvents() {
 
     settingsDialogDraftSnapshot = null;
     settingsDialogAuthUsernameBefore = "";
+    focusIfPossible(returnFocusEl);
   });
 
   const repoDialog = $("repoDialog");
@@ -1687,6 +1713,11 @@ function wireEvents() {
       } catch {}
     });
   }
+  repoDialog.addEventListener("close", () => {
+    const returnFocusEl = repoDialogReturnFocusEl;
+    repoDialogReturnFocusEl = null;
+    focusIfPossible(returnFocusEl);
+  });
   for (const id of [
     "storageModeLocal",
     "storageModeWebdav",

@@ -65,7 +65,9 @@ Checks:
 - [ ] Touch target sizes are acceptable for main actions.
 
 Notes:
-- ________
+- 已完成基础可访问性增强：动态提示区域增加 `aria-live="polite"` 与 `role="status"`。
+- 已实现对话框焦点回退：设置/新增仓库对话框关闭后回到触发控件。
+- 待办：在桌面与移动端进行键盘流手工勾选确认。
 
 ---
 
@@ -128,6 +130,7 @@ Evidence notes:
 - 2026-03-01 12:00 CST rerun (after batch-toolbar disabled-reason polish): same command set passed.
 - 2026-03-01 12:04 CST rerun (after aria-live accessibility polish): same command set passed.
 - 2026-03-01 12:08 CST rerun (after mobile layout polish): same command set passed.
+- 2026-03-01 12:08 CST rerun (after dialog focus-restore accessibility polish): same command set passed.
 - Follow-up: `urllib3` reported `NotOpenSSLWarning` on local Python runtime (`LibreSSL 2.8.3`); does not block current functional checks.
 
 ---
