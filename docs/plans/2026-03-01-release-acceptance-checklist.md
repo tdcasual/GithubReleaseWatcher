@@ -43,7 +43,8 @@ Checks:
 - [ ] Logs section remains readable and copy action works.
 
 Notes:
-- ________
+- 已完成样式层修复：移动端 topbar 改网格、筛选控件改单列全宽、超窄屏批量工具栏改单列、repo 行控件纵向拉伸。
+- 待办：在 iOS Safari / Android Chrome 真机逐项勾选。
 
 ---
 
@@ -126,6 +127,7 @@ Evidence notes:
 - `python3 -m unittest tests.test_auth_security tests.test_downloader_behavior tests.test_state_robustness tests.test_watcher_webdav_parallel tests.test_watcher_webdav_stats_safety tests.test_webapp_api_smoke tests.test_webdav_reliability -v` passed (17 tests).
 - 2026-03-01 12:00 CST rerun (after batch-toolbar disabled-reason polish): same command set passed.
 - 2026-03-01 12:04 CST rerun (after aria-live accessibility polish): same command set passed.
+- 2026-03-01 12:08 CST rerun (after mobile layout polish): same command set passed.
 - Follow-up: `urllib3` reported `NotOpenSSLWarning` on local Python runtime (`LibreSSL 2.8.3`); does not block current functional checks.
 
 ---

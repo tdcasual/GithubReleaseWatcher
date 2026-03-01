@@ -693,9 +693,26 @@ select.input {
 
   .top-actions {
     width: 100%;
-    flex-wrap: wrap;
-    justify-content: flex-start;
     flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  #statusBadge {
+    grid-column: 1 / -1;
+    justify-self: flex-start;
+  }
+
+  #userWrap {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .top-actions > .btn {
+    width: 100%;
   }
 
   .brand {
@@ -739,6 +756,17 @@ select.input {
     flex-wrap: wrap;
   }
 
+  .card-actions > .inline {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .card-actions .input.sm {
+    max-width: 100%;
+  }
+
   .batch-tools {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -761,6 +789,10 @@ select.input {
 
   .repo-select {
     margin-right: auto;
+  }
+
+  .row {
+    align-items: stretch;
   }
 
   .mobile-nav {
@@ -794,5 +826,11 @@ select.input {
 
   .mobile-nav-item:active {
     transform: translateY(0.5px);
+  }
+}
+
+@media (max-width: 420px) {
+  .batch-tools {
+    grid-template-columns: 1fr;
   }
 }
