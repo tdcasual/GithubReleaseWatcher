@@ -166,6 +166,7 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 - 验收辅助脚本：
   - `scripts/qa/manual_acceptance_bootstrap.sh`
   - `scripts/qa/manual_acceptance_stop.sh`
+  - `scripts/qa/new_gate2_report.sh`
 
 ## 2026-03-01 收尾更新摘要
 

@@ -27,6 +27,12 @@ scripts/qa/manual_acceptance_bootstrap.sh --config config.toml --host 127.0.0.1 
 - 日志路径
 - 本轮证据目录（`artifacts/manual-qa/<timestamp>/`）
 
+可选：自动生成本轮验收报告（预填日期/提交号/证据目录）：
+
+```bash
+scripts/qa/new_gate2_report.sh
+```
+
 结束验收后：
 
 ```bash
@@ -49,6 +55,7 @@ scripts/qa/manual_acceptance_stop.sh
 
 可选补充：
 - `notes.txt`（记录异常时间点与复现步骤）
+- `gate2-report.md`（`scripts/qa/new_gate2_report.sh` 自动生成）
 
 ---
 
@@ -97,6 +104,7 @@ scripts/qa/manual_acceptance_stop.sh
 
 - `docs/plans/2026-03-01-gate2-device-acceptance-template.md`
 - `docs/plans/2026-03-01-release-acceptance-checklist.md`（第 3/4/5 节与 Gate 2）
+- 建议优先填写 `artifacts/manual-qa/<timestamp>/gate2-report.md`，再同步结论到上述文档
 
 通过标准：
 - Desktop 与 Mobile 关键检查项全部通过；
