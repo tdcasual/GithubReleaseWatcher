@@ -147,6 +147,30 @@ function syncDialogOpenState() {
   document.body.classList.toggle("dialog-open", hasOpenDialog);
 }
 
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function isMobileLikeViewport() {
+  return window.matchMedia("(max-width: 640px)").matches || window.matchMedia("(pointer: coarse)").matches;
+}
+
+function revealHintIfNeeded(el) {
+  if (!(el instanceof HTMLElement)) return;
+  if (!isMobileLikeViewport()) return;
+  if (!String(el.textContent || "").trim()) return;
+  const rect = el.getBoundingClientRect();
+  const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+  if (!vh) return;
+  const safeTop = 88;
+  const safeBottom = 110;
+  const outOfView = rect.top < safeTop || rect.bottom > vh - safeBottom;
+  if (!outOfView) return;
+  try {
+    el.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+  } catch {}
+}
+
 async function withAuth(fn) {
   try {
     return await fn();
@@ -409,8 +433,7 @@ function setupMobileSectionNav() {
     const target = document.getElementById(id);
     if (!target) return;
     const targetY = window.scrollY + target.getBoundingClientRect().top - topOffset();
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    window.scrollTo({ top: Math.max(0, targetY), behavior: reduceMotion ? "auto" : "smooth" });
+    window.scrollTo({ top: Math.max(0, targetY), behavior: prefersReducedMotion() ? "auto" : "smooth" });
     if (history.replaceState) history.replaceState(null, "", `#${id}`);
   };
 
@@ -469,6 +492,7 @@ async function runRepoNow() {
     if (hint) {
       hint.className = "hint danger";
       hint.textContent = "当前账号需先修改密码，已阻止触发。";
+      revealHintIfNeeded(hint);
     }
     toast("当前账号需先修改密码，请先返回主页设置。", "warn");
     return;
@@ -481,6 +505,7 @@ async function runRepoNow() {
       if (hint) {
         hint.className = "hint danger";
         hint.textContent = `触发失败：${formatApiError(res.error)}`;
+        revealHintIfNeeded(hint);
       }
       toast(`触发失败：${formatApiError(res.error)}`, "bad");
     } else {
@@ -489,6 +514,7 @@ async function runRepoNow() {
         hint.textContent = res.queued
           ? `已加入队列：${new Date().toLocaleTimeString()}`
           : `任务已在运行/队列中：${new Date().toLocaleTimeString()}`;
+        revealHintIfNeeded(hint);
       }
       toast(res.queued ? "已加入队列。" : "任务已在运行/队列中。", "ok");
     }
@@ -496,6 +522,7 @@ async function runRepoNow() {
     if (hint) {
       hint.className = "hint danger";
       hint.textContent = `触发失败：${formatApiError(e?.message || e)}`;
+      revealHintIfNeeded(hint);
     }
     toast(formatApiError(e?.message || e), "bad");
   } finally {

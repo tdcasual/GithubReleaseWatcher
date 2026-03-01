@@ -76,6 +76,8 @@ Notes:
 - 已补充移动端交互优化：底部导航高亮当前区块 + 平滑锚点滚动；批量工具栏与 repo 行控件触控区域加大。
 - 已优化长表单对话框：移动端对话框内容可滚动，操作按钮区底部粘附，减少来回滚动成本。
 - 已补充弹窗打开态交互：打开弹窗时自动隐藏底部导航并锁定背景滚动，关闭后恢复，避免误触。
+- 已增强移动端反馈可见性：批量/WebDAV/仓库运行提示在超出视口时自动滚动到可视区。
+- 已将移动端输入控件字号提升到 16px，降低 iOS Safari 自动放大干扰。
 - 待办：在 iOS Safari / Android Chrome 真机完成触控可用性勾选。
 - 执行脚本与模板：`docs/plans/2026-03-01-gate2-device-acceptance-kit.md`、`docs/plans/2026-03-01-gate2-device-acceptance-template.md`。
 
@@ -151,6 +153,7 @@ Evidence notes:
 - 2026-03-01 12:11 CST rerun (after aria semantics and focus-visible polish): same command set passed.
 - 2026-03-01 16:06 CST rerun (after mobile nav + dialog/touch ergonomics polish): same command set passed.
 - 2026-03-01 16:13 CST rerun (after modal-open nav/scroll guard + reduced-motion polish): same command set passed.
+- 2026-03-01 16:38 CST rerun (after mobile hint auto-reveal + iOS input-size polish): same command set passed.
 - Follow-up: `urllib3` reported `NotOpenSSLWarning` on local Python runtime (`LibreSSL 2.8.3`); does not block current functional checks.
 
 ---

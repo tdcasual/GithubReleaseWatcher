@@ -100,6 +100,30 @@ function syncDialogOpenState() {
   document.body.classList.toggle("dialog-open", hasOpenDialog);
 }
 
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function isMobileLikeViewport() {
+  return window.matchMedia("(max-width: 640px)").matches || window.matchMedia("(pointer: coarse)").matches;
+}
+
+function revealHintIfNeeded(el) {
+  if (!(el instanceof HTMLElement)) return;
+  if (!isMobileLikeViewport()) return;
+  if (!String(el.textContent || "").trim()) return;
+  const rect = el.getBoundingClientRect();
+  const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+  if (!vh) return;
+  const safeTop = 88;
+  const safeBottom = 110;
+  const outOfView = rect.top < safeTop || rect.bottom > vh - safeBottom;
+  if (!outOfView) return;
+  try {
+    el.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+  } catch {}
+}
+
 function setupMobileSectionNav() {
   const nav = document.querySelector(".mobile-nav");
   if (!nav) return;
@@ -135,8 +159,7 @@ function setupMobileSectionNav() {
     const target = document.getElementById(id);
     if (!target) return;
     const targetY = window.scrollY + target.getBoundingClientRect().top - topOffset();
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    window.scrollTo({ top: Math.max(0, targetY), behavior: reduceMotion ? "auto" : "smooth" });
+    window.scrollTo({ top: Math.max(0, targetY), behavior: prefersReducedMotion() ? "auto" : "smooth" });
     if (history.replaceState) history.replaceState(null, "", `#${id}`);
   };
 
@@ -419,10 +442,12 @@ function renderWebdavTestHint() {
   if (!lastWebdavTest) {
     el.className = "hint";
     el.textContent = "上次测试：未测试";
+    revealHintIfNeeded(el);
     return;
   }
   el.className = lastWebdavTest.ok ? "hint" : "hint danger";
   el.textContent = `上次测试：${lastWebdavTest.time} · ${lastWebdavTest.ok ? "连接正常" : `失败：${lastWebdavTest.message}`}`;
+  revealHintIfNeeded(el);
 }
 
 function invalidateWebdavTest() {
@@ -579,6 +604,7 @@ function setBatchActionHint(message, kind) {
   if (!el) return;
   el.className = kind === "danger" ? "hint danger" : "hint";
   el.textContent = String(message || "");
+  revealHintIfNeeded(el);
 }
 
 function setControlDisabledWithReason(btn, disabled, reason) {
@@ -1148,6 +1174,7 @@ async function refreshStorageDiagnostics() {
     }
     capsEl.className = "hint";
     capsEl.textContent = "当前为本地存储模式。";
+    revealHintIfNeeded(capsEl);
     healthEl.className = "hint";
     healthEl.textContent = "";
     return;
@@ -1157,16 +1184,19 @@ async function refreshStorageDiagnostics() {
     if (caps.error || caps.ok === false) {
       capsEl.className = "hint danger";
       capsEl.textContent = `能力探测失败：${caps.error || "未知错误"}`;
+      revealHintIfNeeded(capsEl);
     } else {
       const enabled = Object.entries(caps.capabilities || {})
         .filter(([, v]) => !!v)
         .map(([k]) => k.toUpperCase());
       capsEl.className = "hint";
       capsEl.textContent = `WebDAV 能力：${enabled.length ? enabled.join(", ") : "未探测到"}`;
+      revealHintIfNeeded(capsEl);
     }
   } catch (e) {
     capsEl.className = "hint danger";
     capsEl.textContent = `能力探测失败：${formatError(e)}`;
+    revealHintIfNeeded(capsEl);
   }
 
   try {
@@ -1194,6 +1224,7 @@ async function refreshStorageDiagnostics() {
     const mainText = `上传健康：重试 ${current.retry} 次，校验失败 ${current.verify_failed} 次，队列深度 ${current.queue}。${trendText}`;
     if (!topRepos.length) {
       healthEl.textContent = `${mainText} 重点仓库：暂无异常。`;
+      revealHintIfNeeded(healthEl);
       return;
     }
     const topLinks = topRepos
@@ -1204,9 +1235,11 @@ async function refreshStorageDiagnostics() {
       })
       .join("；");
     healthEl.innerHTML = `${escapeHtml(mainText)} 重点仓库：${topLinks}`;
+    revealHintIfNeeded(healthEl);
   } catch (e) {
     healthEl.className = "hint danger";
     healthEl.textContent = `上传健康读取失败：${formatError(e)}`;
+    revealHintIfNeeded(healthEl);
   }
 }
 
@@ -1536,7 +1569,9 @@ async function saveSettings({ busyButtons } = {}) {
     const res = await withAuth(() => API.put("/settings", payload));
     if (res.error) {
       toast(`保存失败：${res.error}`, "bad");
-      $("settingsHint").textContent = `保存失败：${res.error}`;
+      const settingsHintEl = $("settingsHint");
+      settingsHintEl.textContent = `保存失败：${res.error}`;
+      revealHintIfNeeded(settingsHintEl);
       return false;
     }
 
@@ -1548,7 +1583,9 @@ async function saveSettings({ busyButtons } = {}) {
     return true;
   } catch (e) {
     toast(`保存失败：${formatError(e)}`, "bad");
-    $("settingsHint").textContent = `保存失败：${formatError(e)}`;
+    const settingsHintEl = $("settingsHint");
+    settingsHintEl.textContent = `保存失败：${formatError(e)}`;
+    revealHintIfNeeded(settingsHintEl);
     return false;
   } finally {
     for (const b of btns) setButtonBusy(b, false);
@@ -1931,10 +1968,12 @@ function wireEvents() {
           .join("，");
         if (top) hint.textContent += ` 主要仓库：${top}`;
       }
+      revealHintIfNeeded(hint);
       toast("清理预演完成。", "ok");
     } catch (e) {
       hint.className = "hint danger";
       hint.textContent = `清理预演失败：${formatError(e)}`;
+      revealHintIfNeeded(hint);
       toast(`清理预演失败：${formatError(e)}`, "bad");
     } finally {
       setButtonBusy(btn, false);
@@ -1983,6 +2022,7 @@ function wireEvents() {
           .join("；");
         hint.innerHTML = `${escapeHtml(summary)}${prune ? ` 已清理 ${pruned} 个。` : ""} 重点仓库：${topLinks}。可在仓库状态筛选中选择“仅缓存异常”进行批量处理。`;
       }
+      revealHintIfNeeded(hint);
       if ($("repoStateFilterSelect")?.value === "cache_anomaly") renderRepos();
       if (prune) {
         // Keep toast lightweight; detailed cleanup context is shown in hint.
@@ -1993,6 +2033,7 @@ function wireEvents() {
     } catch (e) {
       hint.className = "hint danger";
       hint.textContent = `缓存同步失败：${formatError(e)}`;
+      revealHintIfNeeded(hint);
       toast(`缓存同步失败：${formatError(e)}`, "bad");
     } finally {
       setButtonBusy(btn, false);
