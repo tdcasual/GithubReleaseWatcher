@@ -125,6 +125,7 @@ Evidence notes:
 - `node --check github_release_watcher/static/repo.js` passed.
 - `python3 -m unittest tests.test_auth_security tests.test_downloader_behavior tests.test_state_robustness tests.test_watcher_webdav_parallel tests.test_watcher_webdav_stats_safety tests.test_webapp_api_smoke tests.test_webdav_reliability -v` passed (17 tests).
 - 2026-03-01 12:00 CST rerun (after batch-toolbar disabled-reason polish): same command set passed.
+- 2026-03-01 12:04 CST rerun (after aria-live accessibility polish): same command set passed.
 - Follow-up: `urllib3` reported `NotOpenSSLWarning` on local Python runtime (`LibreSSL 2.8.3`); does not block current functional checks.
 
 ---

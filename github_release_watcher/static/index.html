@@ -135,7 +135,7 @@
             <button id="batchDisableBtn" class="btn" type="button">批量停用</button>
             <button id="batchClearBtn" class="btn" type="button">清空选择</button>
           </div>
-          <p id="batchActionHint" class="hint"></p>
+          <p id="batchActionHint" class="hint" role="status" aria-live="polite"></p>
           <div id="repos" class="repos"></div>
           <p id="repoCountHint" class="hint"></p>
         </section>
@@ -290,11 +290,11 @@
             </div>
           </div>
 
-          <p id="webdavTestHint" class="hint"></p>
-          <p id="webdavCapabilitiesHint" class="hint"></p>
-          <p id="storageHealthHint" class="hint"></p>
-          <p id="syncCacheHint" class="hint"></p>
-          <p id="cleanupPreviewHint" class="hint"></p>
+          <p id="webdavTestHint" class="hint" role="status" aria-live="polite"></p>
+          <p id="webdavCapabilitiesHint" class="hint" role="status" aria-live="polite"></p>
+          <p id="storageHealthHint" class="hint" role="status" aria-live="polite"></p>
+          <p id="syncCacheHint" class="hint" role="status" aria-live="polite"></p>
+          <p id="cleanupPreviewHint" class="hint" role="status" aria-live="polite"></p>
           <label class="inline option-inline" for="syncCachePruneToggle">
             <input id="syncCachePruneToggle" type="checkbox" />
             <span>同步时清理陈旧缓存文件（prune）</span>
