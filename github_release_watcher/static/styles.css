@@ -239,7 +239,8 @@ code {
 .btn:focus-visible,
 .icon-btn:focus-visible,
 .input:focus,
-.chip:focus-within {
+.chip:focus-within,
+.mobile-nav-item:focus-visible {
   outline: none;
   box-shadow: var(--focus);
   border-color: rgba(0, 149, 246, 0.55);

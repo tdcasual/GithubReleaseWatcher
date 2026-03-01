@@ -111,10 +111,10 @@
               <div id="downloadSuccessRatio" class="kv-v">-</div>
             </div>
           </div>
-            <p id="updateHint" class="hint"></p>
-            <p id="uploadHealthHint" class="hint"></p>
-            <p id="runFeedbackHint" class="hint"></p>
-            <p id="errorHint" class="hint danger"></p>
+            <p id="updateHint" class="hint" role="status" aria-live="polite"></p>
+            <p id="uploadHealthHint" class="hint" role="status" aria-live="polite"></p>
+            <p id="runFeedbackHint" class="hint" role="status" aria-live="polite"></p>
+            <p id="errorHint" class="hint danger" role="alert" aria-live="assertive"></p>
           </div>
         </section>
 
@@ -130,7 +130,7 @@
             </div>
           </div>
           <div id="releasesBody" class="section-body">
-            <p id="releaseStatsHint" class="hint"></p>
+            <p id="releaseStatsHint" class="hint" role="status" aria-live="polite"></p>
             <pre id="releases" class="logs">加载中…</pre>
           </div>
         </section>
@@ -168,7 +168,7 @@
           </div>
         </div>
 
-        <p id="loginError" class="hint danger"></p>
+        <p id="loginError" class="hint danger" role="alert" aria-live="assertive"></p>
 
         <label class="label" for="loginUsername">账号</label>
         <input id="loginUsername" class="input" autocomplete="username" />

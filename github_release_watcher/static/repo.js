@@ -350,16 +350,20 @@ function initSectionToggles() {
     if (!targetId) continue;
     const body = document.getElementById(targetId);
     if (!body) continue;
+    btn.setAttribute("aria-controls", targetId);
     if (isMobile && (targetId === "releasesBody" || targetId === "activityBody")) {
       body.classList.add("hidden");
       btn.textContent = "展开";
+      btn.setAttribute("aria-expanded", "false");
     } else {
       body.classList.remove("hidden");
       btn.textContent = "折叠";
+      btn.setAttribute("aria-expanded", "true");
     }
     btn.addEventListener("click", () => {
       const collapsed = body.classList.toggle("hidden");
       btn.textContent = collapsed ? "展开" : "折叠";
+      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
     });
   }
 }

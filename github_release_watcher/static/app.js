@@ -632,6 +632,7 @@ function renderRepos() {
     selectWrap.className = "repo-select";
     const selectInput = document.createElement("input");
     selectInput.type = "checkbox";
+    selectInput.setAttribute("aria-label", `选择仓库 ${repo.key}`);
     selectInput.checked = selectedRepoKeys.has(repo.key);
     selectInput.addEventListener("change", () => {
       if (selectInput.checked) selectedRepoKeys.add(repo.key);
@@ -650,6 +651,7 @@ function renderRepos() {
     const runBtn = document.createElement("button");
     runBtn.className = "btn";
     runBtn.type = "button";
+    runBtn.setAttribute("aria-label", `检查仓库 ${repo.key}`);
     runBtn.textContent = "检查";
     runBtn.disabled = !enabledValue;
     runBtn.addEventListener("click", async () => {
@@ -670,6 +672,7 @@ function renderRepos() {
     const activityBtn = document.createElement("button");
     activityBtn.className = "btn";
     activityBtn.type = "button";
+    activityBtn.setAttribute("aria-label", `查看仓库 ${repo.key} 活动`);
     activityBtn.textContent = "活动";
     activityBtn.addEventListener("click", () => {
       window.location.href = `/repo.html?repo=${encodeURIComponent(repo.key)}`;
@@ -684,6 +687,7 @@ function renderRepos() {
     sw.className = "switch";
     const enabled = document.createElement("input");
     enabled.type = "checkbox";
+    enabled.setAttribute("aria-label", `启用仓库 ${repo.key}`);
     enabled.checked = !!enabledValue;
     enabled.addEventListener("change", () => {
       repoDraft(repo.key).enabled = enabled.checked;
@@ -717,6 +721,7 @@ function renderRepos() {
     const keepInput = document.createElement("input");
     keepInput.className = "input";
     keepInput.type = "number";
+    keepInput.setAttribute("aria-label", `仓库 ${repo.key} 保留最近 N 个版本`);
     keepInput.min = "1";
     keepInput.max = "1000";
     const globalKeepLastRaw = Number($("keepLastInput")?.value || NaN);
@@ -759,7 +764,7 @@ function renderRepos() {
     const typeInput = document.createElement("input");
     typeInput.className = "input sm";
     typeInput.placeholder = "自定义类型，如: msi";
-    typeInput.setAttribute("aria-label", "添加自定义类型");
+    typeInput.setAttribute("aria-label", `仓库 ${repo.key} 添加自定义类型`);
 
     const addBtn = document.createElement("button");
     addBtn.className = "btn";
@@ -1701,7 +1706,7 @@ function wireEvents() {
 
     settingsDialogDraftSnapshot = null;
     settingsDialogAuthUsernameBefore = "";
-    focusIfPossible(returnFocusEl);
+    if (!focusIfPossible(returnFocusEl)) focusIfPossible($("settingsBtn"));
   });
 
   const repoDialog = $("repoDialog");
@@ -1716,7 +1721,7 @@ function wireEvents() {
   repoDialog.addEventListener("close", () => {
     const returnFocusEl = repoDialogReturnFocusEl;
     repoDialogReturnFocusEl = null;
-    focusIfPossible(returnFocusEl);
+    if (!focusIfPossible(returnFocusEl)) focusIfPossible($("addRepoBtn"));
   });
   for (const id of [
     "storageModeLocal",

@@ -51,7 +51,7 @@
               <div class="kv-k">自动轮询</div>
               <div class="kv-v">
                 <label class="switch">
-                  <input id="schedulerToggle" type="checkbox" />
+                  <input id="schedulerToggle" type="checkbox" aria-label="自动轮询开关" />
                   <span class="slider"></span>
                 </label>
               </div>
@@ -105,7 +105,7 @@
             </div>
             <div class="card-actions">
               <div class="inline" style="gap: 8px; flex-wrap: wrap">
-                <input id="repoFilterInput" class="input sm" placeholder="搜索 owner/repo" />
+                <input id="repoFilterInput" class="input sm" placeholder="搜索 owner/repo" aria-label="搜索仓库" />
                 <select id="repoStateFilterSelect" class="input sm" aria-label="状态筛选">
                   <option value="all">全部状态</option>
                   <option value="enabled">仅启用</option>
@@ -123,7 +123,7 @@
               <button id="addRepoBtn" class="btn" type="button">添加仓库</button>
             </div>
           </div>
-          <div class="batch-tools">
+          <div class="batch-tools" role="group" aria-label="仓库批量操作工具栏" aria-describedby="batchActionHint">
             <span id="batchSelectedCount" class="muted">已选 0 个仓库</span>
             <button id="batchSelectVisibleBtn" class="btn" type="button">全选当前筛选</button>
             <button id="batchInvertVisibleBtn" class="btn" type="button">反选当前筛选</button>
@@ -137,7 +137,7 @@
           </div>
           <p id="batchActionHint" class="hint" role="status" aria-live="polite"></p>
           <div id="repos" class="repos"></div>
-          <p id="repoCountHint" class="hint"></p>
+          <p id="repoCountHint" class="hint" role="status" aria-live="polite"></p>
         </section>
 
         <section id="logsSection" class="card card-logs">
@@ -150,7 +150,7 @@
               <button id="copyLogsBtn" class="btn" type="button">复制活动</button>
             </div>
           </div>
-          <p id="logFileHint" class="hint"></p>
+          <p id="logFileHint" class="hint" role="status" aria-live="polite"></p>
           <pre id="logs" class="logs">加载中…</pre>
         </section>
       </main>
@@ -245,7 +245,7 @@
             <div class="grow">
               <label class="label" style="margin-bottom: 6px">校验 TLS</label>
               <label class="switch">
-                <input id="webdavVerifyTls" type="checkbox" />
+                <input id="webdavVerifyTls" type="checkbox" aria-label="校验 TLS" />
                 <span class="slider"></span>
               </label>
             </div>
@@ -284,7 +284,7 @@
             <div class="grow">
               <label class="label" style="margin-bottom: 6px">上传后校验</label>
               <label class="switch">
-                <input id="webdavVerifyAfterUpload" type="checkbox" />
+                <input id="webdavVerifyAfterUpload" type="checkbox" aria-label="上传后校验" />
                 <span class="slider"></span>
               </label>
             </div>
@@ -296,7 +296,7 @@
           <p id="syncCacheHint" class="hint" role="status" aria-live="polite"></p>
           <p id="cleanupPreviewHint" class="hint" role="status" aria-live="polite"></p>
           <label class="inline option-inline" for="syncCachePruneToggle">
-            <input id="syncCachePruneToggle" type="checkbox" />
+            <input id="syncCachePruneToggle" type="checkbox" aria-label="同步时清理陈旧缓存文件" />
             <span>同步时清理陈旧缓存文件（prune）</span>
           </label>
         </div>
@@ -315,7 +315,7 @@
           </div>
         </div>
 
-        <p id="settingsHint" class="hint"></p>
+        <p id="settingsHint" class="hint" role="status" aria-live="polite"></p>
 
         <menu class="dialog-actions">
           <button id="testWebdavBtn" class="btn" type="button">测试 WebDAV</button>
