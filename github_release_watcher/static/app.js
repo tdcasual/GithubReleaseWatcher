@@ -402,6 +402,11 @@ function isRepoEnabledForRun(key) {
   return !!repoCfg.enabled;
 }
 
+function isRepoInErrorState(key) {
+  const summary = repoSummaryByKey.get(String(key || ""));
+  return summary?.stats?.last_check_ok === false;
+}
+
 function setBatchActionHint(message, kind) {
   const el = $("batchActionHint");
   if (!el) return;
@@ -413,6 +418,8 @@ function updateBatchControlsUI() {
   const countEl = $("batchSelectedCount");
   const selectVisibleBtn = $("batchSelectVisibleBtn");
   const invertVisibleBtn = $("batchInvertVisibleBtn");
+  const selectEnabledBtn = $("batchSelectEnabledBtn");
+  const selectErrorBtn = $("batchSelectErrorBtn");
   const runBtn = $("batchRunBtn");
   const enableBtn = $("batchEnableBtn");
   const disableBtn = $("batchDisableBtn");
@@ -426,6 +433,8 @@ function updateBatchControlsUI() {
   const visibleDisabled = !config || visible.length <= 0;
   if (selectVisibleBtn) selectVisibleBtn.disabled = isBusy(selectVisibleBtn) || visibleDisabled;
   if (invertVisibleBtn) invertVisibleBtn.disabled = isBusy(invertVisibleBtn) || visibleDisabled;
+  if (selectEnabledBtn) selectEnabledBtn.disabled = isBusy(selectEnabledBtn) || visibleDisabled;
+  if (selectErrorBtn) selectErrorBtn.disabled = isBusy(selectErrorBtn) || visibleDisabled;
   if (runBtn) runBtn.disabled = isBusy(runBtn) || !config || runnableCount <= 0;
   if (enableBtn) enableBtn.disabled = isBusy(enableBtn) || disabled;
   if (disableBtn) disableBtn.disabled = isBusy(disableBtn) || disabled;
@@ -1003,6 +1012,28 @@ function batchSelectVisible() {
   renderRepos();
 }
 
+function batchSelectByFilter(predicate, successMessage, emptyMessage) {
+  const visible = getVisibleRepoKeys();
+  if (!visible.length) {
+    setBatchActionHint("当前筛选结果为空，无可选仓库。", "danger");
+    return;
+  }
+  let selectedNow = 0;
+  for (const key of visible) {
+    if (!predicate(key)) continue;
+    if (selectedRepoKeys.has(key)) continue;
+    selectedRepoKeys.add(key);
+    selectedNow += 1;
+  }
+  if (selectedNow <= 0) {
+    setBatchActionHint(emptyMessage, "danger");
+    renderRepos();
+    return;
+  }
+  setBatchActionHint(successMessage(selectedNow), "");
+  renderRepos();
+}
+
 function batchInvertVisible() {
   const visible = getVisibleRepoKeys();
   if (!visible.length) {
@@ -1023,6 +1054,22 @@ function batchInvertVisible() {
   const msg = `反选完成：选中 ${selectedNow} 个，取消 ${unselectedNow} 个。`;
   setBatchActionHint(msg, "");
   renderRepos();
+}
+
+function batchSelectEnabledVisible() {
+  batchSelectByFilter(
+    (key) => isRepoEnabledForRun(key),
+    (count) => `已选中 ${count} 个启用仓库。`,
+    "当前筛选结果中没有可新增的启用仓库。"
+  );
+}
+
+function batchSelectErrorVisible() {
+  batchSelectByFilter(
+    (key) => isRepoInErrorState(key),
+    (count) => `已选中 ${count} 个异常仓库。`,
+    "当前筛选结果中没有可新增的异常仓库。"
+  );
 }
 
 async function batchSetEnabled(enabled, triggerBtn) {
@@ -1436,6 +1483,8 @@ function wireEvents() {
   $("copyLogsBtn").addEventListener("click", copyLogs);
   $("batchSelectVisibleBtn").addEventListener("click", batchSelectVisible);
   $("batchInvertVisibleBtn").addEventListener("click", batchInvertVisible);
+  $("batchSelectEnabledBtn").addEventListener("click", batchSelectEnabledVisible);
+  $("batchSelectErrorBtn").addEventListener("click", batchSelectErrorVisible);
   $("batchRunBtn").addEventListener("click", async () => batchRunSelected($("batchRunBtn")));
   $("batchEnableBtn").addEventListener("click", async () => batchSetEnabled(true, $("batchEnableBtn")));
   $("batchDisableBtn").addEventListener("click", async () => batchSetEnabled(false, $("batchDisableBtn")));
