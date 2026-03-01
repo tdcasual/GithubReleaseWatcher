@@ -184,6 +184,7 @@ Rollback plan:
 
 Release handoff:
 - 发布交付说明：`docs/plans/2026-03-01-release-handoff.md`
+- 状态快照脚本：`scripts/qa/check_acceptance_status.sh`（可用 `--strict` 作为发布前阻断检查）
 
 Approver: ________  
 Date: ________

@@ -36,7 +36,13 @@ scripts/qa/new_acceptance_packet.sh
 - `artifacts/manual-qa/<timestamp>/gate3-report.md`
 - `docs/plans/2026-03-01-release-acceptance-checklist.md`
 
-4. 停止验收环境：
+4. 生成门禁状态快照（可选严格模式）：
+
+```bash
+scripts/qa/check_acceptance_status.sh --strict
+```
+
+5. 停止验收环境：
 
 ```bash
 scripts/qa/manual_acceptance_stop.sh
