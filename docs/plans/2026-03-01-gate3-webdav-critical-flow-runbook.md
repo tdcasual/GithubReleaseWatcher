@@ -20,6 +20,12 @@ scripts/qa/manual_acceptance_bootstrap.sh --config config.toml --host 127.0.0.1 
 证据目录建议：
 - `artifacts/manual-qa/<timestamp>/`
 
+可选：自动生成本轮 Gate 3 验收报告（预填日期/提交号/证据目录）：
+
+```bash
+scripts/qa/new_gate3_report.sh
+```
+
 ---
 
 ## 2. 执行步骤与通过标准
@@ -122,28 +128,10 @@ scripts/qa/manual_acceptance_bootstrap.sh --config config.toml --host 127.0.0.1 
 
 ## 4. 验收记录模板
 
-执行日期：__________
-执行人：__________
-环境：__________
-配置文件：__________
-证据目录：__________
+请优先使用完整模板：
 
-- [ ] Step 1 passed
-- [ ] Step 2 passed
-- [ ] Step 3 passed
-- [ ] Step 4 passed
-- [ ] Step 5 passed
-- [ ] Step 6 passed
-
-缺陷记录：
-- ________
-
-结论：
-- [ ] Gate 3 pass
-- [ ] Gate 3 blocked
-
-结论说明：
-- ________
+- `docs/plans/2026-03-01-gate3-webdav-critical-flow-template.md`
+- 或自动生成并预填的报告：`artifacts/manual-qa/<timestamp>/gate3-report.md`
 
 ---
 

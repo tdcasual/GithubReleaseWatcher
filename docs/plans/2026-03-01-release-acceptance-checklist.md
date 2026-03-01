@@ -125,6 +125,8 @@ Notes:
 - 代码层已完成关键链路提示与守卫：缓存异常筛选/批量选择受 WebDAV 模式与同步快照前置条件限制。
 - 待办：使用真实 WebDAV 环境按 Run sequence 全链路走查，并勾选上述 5 项。
 - 执行 runbook：`docs/plans/2026-03-01-gate3-webdav-critical-flow-runbook.md`。
+- 执行模板：`docs/plans/2026-03-01-gate3-webdav-critical-flow-template.md`。
+- 报告生成脚本：`scripts/qa/new_gate3_report.sh`（可自动预填日期/提交号/证据目录）。
 
 ---
 
