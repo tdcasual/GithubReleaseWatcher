@@ -386,6 +386,22 @@ function getSelectedRepoKeys() {
   return Array.from(selectedRepoKeys);
 }
 
+function getRepoConfigByKey(key) {
+  if (!config || !Array.isArray(config.repos)) return null;
+  for (const repo of config.repos) {
+    if (String(repo?.key || "") === String(key || "")) return repo;
+  }
+  return null;
+}
+
+function isRepoEnabledForRun(key) {
+  const repoCfg = getRepoConfigByKey(key);
+  if (!repoCfg) return false;
+  const patch = draft?.repos?.[key] || {};
+  if (Object.prototype.hasOwnProperty.call(patch, "enabled")) return !!patch.enabled;
+  return !!repoCfg.enabled;
+}
+
 function setBatchActionHint(message, kind) {
   const el = $("batchActionHint");
   if (!el) return;
@@ -403,13 +419,14 @@ function updateBatchControlsUI() {
   const clearBtn = $("batchClearBtn");
   const selected = getSelectedRepoKeys();
   const visible = getVisibleRepoKeys();
+  const runnableCount = selected.filter((key) => isRepoEnabledForRun(key)).length;
   const count = selected.length;
-  if (countEl) countEl.textContent = `已选 ${count} 个仓库（当前筛选 ${visible.length} 个）`;
+  if (countEl) countEl.textContent = `已选 ${count} 个仓库（当前筛选 ${visible.length} 个，可检查 ${runnableCount} 个）`;
   const disabled = !config || count <= 0;
   const visibleDisabled = !config || visible.length <= 0;
   if (selectVisibleBtn) selectVisibleBtn.disabled = isBusy(selectVisibleBtn) || visibleDisabled;
   if (invertVisibleBtn) invertVisibleBtn.disabled = isBusy(invertVisibleBtn) || visibleDisabled;
-  if (runBtn) runBtn.disabled = isBusy(runBtn) || disabled;
+  if (runBtn) runBtn.disabled = isBusy(runBtn) || !config || runnableCount <= 0;
   if (enableBtn) enableBtn.disabled = isBusy(enableBtn) || disabled;
   if (disableBtn) disableBtn.disabled = isBusy(disableBtn) || disabled;
   if (clearBtn) clearBtn.disabled = !config || count <= 0;
@@ -1038,16 +1055,24 @@ async function batchRunSelected(triggerBtn) {
     toast("请先选择至少一个仓库。", "warn");
     return;
   }
+  const runnableSelected = selected.filter((key) => isRepoEnabledForRun(key));
+  if (!runnableSelected.length) {
+    setBatchActionHint("所选仓库均为停用状态，无法批量检查。", "danger");
+    toast("所选仓库均为停用状态，请先启用后再批量检查。", "warn");
+    return;
+  }
   if (mustChangePassword) {
     renderSecurityBanner();
     setBatchActionHint("当前账号需先修改密码，已阻止批量触发。", "danger");
     toast("当前账号需先修改密码，请先在设置中更新账号密码。", "warn");
     return;
   }
+  const skipped = selected.length - runnableSelected.length;
+  const skippedSuffix = skipped > 0 ? `（跳过 ${skipped} 个停用仓库）` : "";
   setBatchActionHint("", "");
   setButtonBusy(triggerBtn, true, "触发中…");
   try {
-    const res = await withAuth(() => API.post("/run", { repos: selected }));
+    const res = await withAuth(() => API.post("/run", { repos: runnableSelected }));
     if (res.error) {
       const msg = `批量触发失败：${res.error}`;
       setBatchActionHint(msg, "danger");
@@ -1055,7 +1080,7 @@ async function batchRunSelected(triggerBtn) {
       return;
     }
     const msg = res.queued
-      ? `批量检查已入队：${selected.length} 个仓库。`
+      ? `批量检查已入队：${runnableSelected.length} 个仓库。${skippedSuffix}`
       : "已有任务在运行或队列中，本次批量请求未入队。";
     setBatchActionHint(msg, "");
     toast(msg, res.queued ? "ok" : "warn");
