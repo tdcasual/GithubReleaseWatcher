@@ -156,6 +156,11 @@ docker run --rm -p 8000:8000 -v "$PWD/data:/data" -e GITHUB_TOKEN="$GITHUB_TOKEN
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
+## 收尾与发布文档
+
+- 收尾执行计划：`docs/plans/2026-03-01-release-polish-plan.md`
+- 发布验收清单：`docs/plans/2026-03-01-release-acceptance-checklist.md`
+
 ## 目录结构
 
 默认会下载到 `download_dir/<owner>/<repo>/<tag>/`，例如：
