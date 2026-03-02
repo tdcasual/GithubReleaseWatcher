@@ -6,8 +6,19 @@ const formatRunScope = window.GRWFormatters?.formatRunScope;
 const escapeHtml = window.GRWFormatters?.escapeHtml;
 const renderStructuredLogs = window.GRWLogsView?.renderStructuredLogs;
 const createRepoController = window.GRWRepoController?.createRepoController;
+const createSettingsController = window.GRWSettingsController?.createSettingsController;
 
-if (!API || !formatError || !isoToLocal || !formatSignedDelta || !formatRunScope || !escapeHtml || !renderStructuredLogs || !createRepoController) {
+if (
+  !API ||
+  !formatError ||
+  !isoToLocal ||
+  !formatSignedDelta ||
+  !formatRunScope ||
+  !escapeHtml ||
+  !renderStructuredLogs ||
+  !createRepoController ||
+  !createSettingsController
+) {
   throw new Error("Shared frontend modules not loaded");
 }
 
@@ -61,6 +72,11 @@ const repoController = createRepoController({
   getFilterText: () => $("repoFilterInput")?.value || "",
   getStateFilter: () => $("repoStateFilterSelect")?.value || "all",
   getSortMode: () => $("repoSortSelect")?.value || "default",
+});
+
+const settingsController = createSettingsController({
+  getEl: $,
+  normalizeAssetType: (value) => normalizeAssetType(value),
 });
 
 function getFocusableTriggerEl() {
@@ -1323,58 +1339,11 @@ async function batchRunSelected(triggerBtn) {
   }
 }
 
-function validateIntField({ inputId, label, min, max, emptyOk }) {
-  const el = $(inputId);
-  const raw = String(el.value || "").trim();
-  if (!raw) {
-    if (emptyOk) return null;
-    throw new Error(`${label}不能为空。`);
-  }
-  const num = Number(raw);
-  if (!Number.isFinite(num) || !Number.isInteger(num)) throw new Error(`${label}必须为整数。`);
-  if (min != null && num < min) throw new Error(`${label}必须 ≥ ${min}。`);
-  if (max != null && num > max) throw new Error(`${label}必须 ≤ ${max}。`);
-  return num;
-}
+const validateIntField = (options) => settingsController.validateIntField(options);
 
-function validateNumberField({ inputId, label, min, max, emptyOk }) {
-  const el = $(inputId);
-  const raw = String(el.value || "").trim();
-  if (!raw) {
-    if (emptyOk) return null;
-    throw new Error(`${label}不能为空。`);
-  }
-  const num = Number(raw);
-  if (!Number.isFinite(num)) throw new Error(`${label}必须为数字。`);
-  if (min != null && num < min) throw new Error(`${label}必须 ≥ ${min}。`);
-  if (max != null && num > max) throw new Error(`${label}必须 ≤ ${max}。`);
-  return num;
-}
+const validateNumberField = (options) => settingsController.validateNumberField(options);
 
-function normalizeRepoPatch(key, patch) {
-  const normalized = { ...patch };
-  if ("keep_last" in normalized) {
-    const raw = normalized.keep_last;
-    if (raw === null || raw === undefined || raw === "") normalized.keep_last = null;
-    else {
-      const num = Number(raw);
-      if (!Number.isFinite(num) || !Number.isInteger(num) || num < 1 || num > 1000) {
-        throw new Error(`仓库 ${key} 的保留数量必须为 1~1000 或留空。`);
-      }
-      normalized.keep_last = num;
-    }
-  }
-  if ("asset_types" in normalized) {
-    const list = Array.isArray(normalized.asset_types) ? normalized.asset_types : [];
-    const out = [];
-    for (const item of list) {
-      const norm = normalizeAssetType(item);
-      if (!out.includes(norm)) out.push(norm);
-    }
-    normalized.asset_types = out;
-  }
-  return normalized;
-}
+const normalizeRepoPatch = (key, patch) => settingsController.normalizeRepoPatch(key, patch);
 
 async function saveSettings({ busyButtons } = {}) {
   const btns = Array.isArray(busyButtons) ? busyButtons.filter(Boolean) : [];
