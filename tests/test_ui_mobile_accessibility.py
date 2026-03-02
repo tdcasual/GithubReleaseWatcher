@@ -56,6 +56,58 @@ class UIMobileAccessibilityTests(unittest.TestCase):
             f"Muted text contrast ratio is {ratio:.2f}, expected at least 4.5 on light card background.",
         )
 
+    def test_layout_and_mobile_toast_regression_guards(self) -> None:
+        content = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+        index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        self.assertIn(
+            "#securityBanner {\n    grid-column: 1 / -1;\n  }",
+            content,
+            "security banner should span both desktop columns to avoid large blank areas.",
+        )
+        self.assertIn("pointer-events: none;", content, "toast should not block taps/clicks.")
+        self.assertRegex(
+            content,
+            r"@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*?\.toast\s*\{[\s\S]*?bottom:\s*calc\(18px\s*\+\s*env\(safe-area-inset-bottom\)\)",
+            "mobile toast should stay near bottom safe-area and avoid covering content cards.",
+        )
+        self.assertIn("grid-template-columns: minmax(0, 1fr);", content, "grid should clamp single-column width on mobile.")
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr));", content, "desktop grid should also use clamped tracks.")
+        self.assertIn(".grid > * {\n  min-width: 0;\n}", content, "grid children should allow shrinking to viewport width.")
+        self.assertRegex(
+            content,
+            r"@media\s*\(max-width:\s*640px\)\s*\{[\s\S]*?\.card-head\s*\{[\s\S]*?flex-wrap:\s*wrap;",
+            "mobile card header should wrap to prevent horizontal overflow.",
+        )
+        self.assertIn('id="batchToolsToggleBtn"', index_html, "mobile batch tools should provide a collapse toggle button.")
+        self.assertIn('aria-controls="batchToolsPanel"', index_html, "batch tools toggle should reference its controlled panel.")
+        self.assertIn('.batch-tools-wrap[data-expanded="false"] .batch-tools', content, "collapsed batch tools rule should exist on mobile.")
+
+    def test_logs_panel_uses_structured_readable_layout(self) -> None:
+        content = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+        index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        app_js = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn('id="logs"', index_html, "logs container should exist.")
+        self.assertIn('class="logs logs-feed"', index_html, "logs container should use feed layout class.")
+        self.assertIn('role="log"', index_html, "logs container should expose log role for assistive tools.")
+        self.assertIn(".log-entry", content, "structured log row style should exist.")
+        self.assertIn(".log-time", content, "structured log time style should exist.")
+        self.assertIn(".log-summary", content, "structured log summary style should exist.")
+        self.assertIn(".log-details", content, "error details style should exist.")
+        self.assertIn(".log-details[hidden]", content, "error details should support collapsed hidden state.")
+        self.assertIn(".log-count-badge", content, "repeated log groups should show compact count badge style.")
+        self.assertIn(".log-detail-advanced-toggle", content, "error details should use a single advanced-details toggle.")
+        self.assertIn(".log-detail-advanced", content, "error details should include advanced details panel.")
+        self.assertIn(".log-detail-advanced-row", content, "advanced details panel should render structured rows.")
+        self.assertIn(".log-detail-advanced-toggle.is-critical", content, "critical errors should have emphasized advanced-details toggle style.")
+        self.assertIn('tone === "bad"', app_js, "only error-toned logs should render detailed blocks.")
+        self.assertIn("details.hidden = !expanded", app_js, "error details should toggle expanded/collapsed state.")
+        self.assertIn("buildDisplayLogGroups", app_js, "log rendering should aggregate repeated events before display.")
+        self.assertIn("formatLogPathTail", app_js, "error details should show condensed path tail by default.")
+        self.assertIn("summarizeLogDetailMessage", app_js, "error details should show a concise message summary by default.")
+        self.assertIn("shouldAutoExpandAdvancedDetails", app_js, "critical errors should auto-expand advanced details.")
+        self.assertIn("detailPanel.hidden = !autoExpandAdvanced", app_js, "advanced details panel should initialize by severity policy.")
+        self.assertIn("detailToggle.textContent = next ? \"收起细节\" : \"技术细节\"", app_js, "advanced details toggle should update label.")
+
 
 if __name__ == "__main__":
     unittest.main()
