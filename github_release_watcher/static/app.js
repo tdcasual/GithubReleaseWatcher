@@ -5,8 +5,9 @@ const formatSignedDelta = window.GRWFormatters?.formatSignedDelta;
 const formatRunScope = window.GRWFormatters?.formatRunScope;
 const escapeHtml = window.GRWFormatters?.escapeHtml;
 const renderStructuredLogs = window.GRWLogsView?.renderStructuredLogs;
+const createRepoController = window.GRWRepoController?.createRepoController;
 
-if (!API || !formatError || !isoToLocal || !formatSignedDelta || !formatRunScope || !escapeHtml || !renderStructuredLogs) {
+if (!API || !formatError || !isoToLocal || !formatSignedDelta || !formatRunScope || !escapeHtml || !renderStructuredLogs || !createRepoController) {
   throw new Error("Shared frontend modules not loaded");
 }
 
@@ -44,6 +45,23 @@ let hasSyncCacheSnapshot = false;
 let batchToolsExpanded = true;
 
 const $ = (id) => document.getElementById(id);
+
+const repoController = createRepoController({
+  getConfig: () => config,
+  getDraft: () => draft,
+  getRepoSummaryByKey: () => repoSummaryByKey,
+  getLastSyncCacheAnomalyRepoKeys: () => lastSyncCacheAnomalyRepoKeys,
+  setLastSyncCacheAnomalyRepoKeys: (next) => {
+    lastSyncCacheAnomalyRepoKeys = next;
+  },
+  getSelectedRepoKeysSet: () => selectedRepoKeys,
+  setSelectedRepoKeysSet: (next) => {
+    selectedRepoKeys = next;
+  },
+  getFilterText: () => $("repoFilterInput")?.value || "",
+  getStateFilter: () => $("repoStateFilterSelect")?.value || "all",
+  getSortMode: () => $("repoSortSelect")?.value || "default",
+});
 
 function getFocusableTriggerEl() {
   const active = document.activeElement;
@@ -428,137 +446,21 @@ function repoDraft(key) {
   return draft.repos[key];
 }
 
-function getRepoListView() {
-  if (!config || !Array.isArray(config.repos)) {
-    return { repos: [], filterText: "", total: 0 };
-  }
-  const filterText = String($("repoFilterInput")?.value || "")
-    .trim()
-    .toLowerCase();
-  const stateFilter = String($("repoStateFilterSelect")?.value || "all").trim();
-  const sortMode = String($("repoSortSelect")?.value || "default").trim();
-  let repos = Array.from(config.repos);
-  if (filterText) {
-    repos = repos.filter((r) => {
-      const key = String(r?.key || "").toLowerCase();
-      const name = String(r?.name || "").toLowerCase();
-      return key.includes(filterText) || name.includes(filterText);
-    });
-  }
-  if (stateFilter !== "all") {
-    const validRepoKeys = new Set(repos.map((r) => String(r?.key || "")));
-    if (stateFilter === "cache_anomaly") {
-      const next = new Set();
-      for (const key of lastSyncCacheAnomalyRepoKeys) {
-        if (validRepoKeys.has(key)) next.add(key);
-      }
-      lastSyncCacheAnomalyRepoKeys = next;
-    }
-    repos = repos.filter((r) => {
-      const key = String(r?.key || "");
-      const enabled = isRepoEnabledForRun(key);
-      if (stateFilter === "enabled") return enabled;
-      if (stateFilter === "disabled") return !enabled;
-      if (stateFilter === "error") return isRepoInErrorState(key);
-      if (stateFilter === "network_error") {
-        const summary = repoSummaryByKey.get(key);
-        return summary?.stats?.last_check_ok === false && summary?.stats?.last_error_type === "network";
-      }
-      if (stateFilter === "cache_anomaly") {
-        return lastSyncCacheAnomalyRepoKeys.has(key);
-      }
-      return true;
-    });
-  }
+const getRepoListView = () => repoController.getRepoListView();
 
-  const statusRank = (repoKey) => {
-    const summary = repoSummaryByKey.get(repoKey);
-    const ok = summary?.stats?.last_check_ok;
-    if (ok === false) return summary?.stats?.last_error_type === "network" ? 0 : 1;
-    if (ok === true) return 3;
-    return 2;
-  };
-  const nextRank = (repoKey) => {
-    const summary = repoSummaryByKey.get(repoKey);
-    const iso = summary?.next_run_at;
-    const t = iso ? Date.parse(iso) : Number.POSITIVE_INFINITY;
-    return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
-  };
+const getVisibleRepoKeys = () => repoController.getVisibleRepoKeys();
 
-  if (sortMode === "status") {
-    repos.sort((a, b) => {
-      const ak = String(a.key || "");
-      const bk = String(b.key || "");
-      const ar = statusRank(ak);
-      const br = statusRank(bk);
-      if (ar !== br) return ar - br;
-      const an = nextRank(ak);
-      const bn = nextRank(bk);
-      if (an !== bn) return an - bn;
-      return ak.localeCompare(bk);
-    });
-  } else if (sortMode === "next") {
-    repos.sort((a, b) => {
-      const ak = String(a.key || "");
-      const bk = String(b.key || "");
-      const an = nextRank(ak);
-      const bn = nextRank(bk);
-      if (an !== bn) return an - bn;
-      return ak.localeCompare(bk);
-    });
-  }
+const syncSelectedReposWithConfig = () => repoController.syncSelectedReposWithConfig();
 
-  return { repos, filterText, stateFilter, total: config.repos.length };
-}
+const getSelectedRepoKeys = () => repoController.getSelectedRepoKeys();
 
-function getVisibleRepoKeys() {
-  const view = getRepoListView();
-  const keys = [];
-  for (const repo of view.repos) {
-    const key = String(repo?.key || "");
-    if (key) keys.push(key);
-  }
-  return keys;
-}
+const getRepoConfigByKey = (key) => repoController.getRepoConfigByKey(key);
 
-function syncSelectedReposWithConfig() {
-  const existing = new Set(Array.isArray(config?.repos) ? config.repos.map((r) => String(r?.key || "")) : []);
-  const next = new Set();
-  for (const key of selectedRepoKeys) {
-    if (existing.has(key)) next.add(key);
-  }
-  selectedRepoKeys = next;
-}
+const isRepoEnabledForRun = (key) => repoController.isRepoEnabledForRun(key);
 
-function getSelectedRepoKeys() {
-  syncSelectedReposWithConfig();
-  return Array.from(selectedRepoKeys);
-}
+const isRepoInErrorState = (key) => repoController.isRepoInErrorState(key);
 
-function getRepoConfigByKey(key) {
-  if (!config || !Array.isArray(config.repos)) return null;
-  for (const repo of config.repos) {
-    if (String(repo?.key || "") === String(key || "")) return repo;
-  }
-  return null;
-}
-
-function isRepoEnabledForRun(key) {
-  const repoCfg = getRepoConfigByKey(key);
-  if (!repoCfg) return false;
-  const patch = draft?.repos?.[key] || {};
-  if (Object.prototype.hasOwnProperty.call(patch, "enabled")) return !!patch.enabled;
-  return !!repoCfg.enabled;
-}
-
-function isRepoInErrorState(key) {
-  const summary = repoSummaryByKey.get(String(key || ""));
-  return summary?.stats?.last_check_ok === false;
-}
-
-function isRepoInCacheAnomalyState(key) {
-  return lastSyncCacheAnomalyRepoKeys.has(String(key || ""));
-}
+const isRepoInCacheAnomalyState = (key) => repoController.isRepoInCacheAnomalyState(key);
 
 function isWebdavStorageMode() {
   const mode = String(draft?.storage?.mode || config?.storage?.mode || "local").trim().toLowerCase();

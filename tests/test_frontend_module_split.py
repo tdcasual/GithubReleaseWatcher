@@ -10,22 +10,27 @@ class FrontendModuleSplitTests(unittest.TestCase):
         api_pos = html.find('src="/api-client.js"')
         fmt_pos = html.find('src="/formatters.js"')
         logs_pos = html.find('src="/logs-view.js"')
+        repos_pos = html.find('src="/repos-controller.js"')
         app_pos = html.find('src="/app.js"')
         self.assertGreaterEqual(api_pos, 0)
         self.assertGreaterEqual(fmt_pos, 0)
         self.assertGreaterEqual(logs_pos, 0)
+        self.assertGreaterEqual(repos_pos, 0)
         self.assertGreaterEqual(app_pos, 0)
         self.assertLess(api_pos, app_pos)
         self.assertLess(fmt_pos, app_pos)
         self.assertLess(logs_pos, app_pos)
+        self.assertLess(repos_pos, app_pos)
 
     def test_app_uses_shared_global_modules(self) -> None:
         app_js = Path("github_release_watcher/static/app.js").read_text(encoding="utf-8")
         self.assertIn("window.GRWApiClient", app_js)
         self.assertIn("window.GRWFormatters", app_js)
         self.assertIn("window.GRWLogsView", app_js)
+        self.assertIn("window.GRWRepoController", app_js)
         self.assertNotIn("const API = {", app_js)
         self.assertNotIn("function renderStructuredLogs(", app_js)
+        self.assertNotIn("function getRepoListView(", app_js)
 
 
 if __name__ == "__main__":
