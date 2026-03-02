@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import random
 import secrets
 import threading
 import time
@@ -19,6 +18,7 @@ from .auth_service import AuthService, _default_auth_config, _load_auth_config, 
 from .config import AppConfig, ConfigError, RepoConfig, WebDAVConfig, load_config
 from .github import parse_repo_spec
 from .run_queue import RunQueueService
+from .scheduler import SchedulerService
 from .state import load_state
 from .webapp_payloads import (
     _compile_regex_list,
@@ -192,11 +192,7 @@ class WatcherService:
         self._run_queue = RunQueueService(lock=self._lock, now_iso=_utc_now_iso)
         # Backward compatibility for tests and internal references.
         self._queue = self._run_queue.queue
-
-        self._scheduler_enabled = True
-        self._next_run_at: float | None = None
-        self._repo_next_run_at: dict[str, float] = {}
-        self._rng = random.Random()
+        self._scheduler_service = SchedulerService()
 
         self._started_at = _utc_now_iso()
         self._last_config_reload_at: str | None = None
@@ -208,7 +204,7 @@ class WatcherService:
         self.reload_config()
 
         self._worker = threading.Thread(target=self._worker_loop, name="watcher-worker", daemon=True)
-        self._scheduler = threading.Thread(target=self._scheduler_loop, name="watcher-scheduler", daemon=True)
+        self._scheduler_thread = threading.Thread(target=self._scheduler_loop, name="watcher-scheduler", daemon=True)
 
     @property
     def overrides_path(self) -> Path:
@@ -216,15 +212,12 @@ class WatcherService:
 
     def start(self, *, scheduler_enabled: bool = True, run_immediately: bool = True) -> None:
         with self._lock:
-            self._scheduler_enabled = bool(scheduler_enabled)
-            if self._scheduler_enabled:
-                self._init_repo_schedule_locked(run_immediately=run_immediately)
-                self._refresh_global_next_run_at_locked()
-            else:
-                self._next_run_at = None
+            self._scheduler_service.set_enabled(bool(scheduler_enabled))
+            if self._scheduler_service.enabled:
+                self._scheduler_service.init_schedule(self._config, run_immediately=run_immediately)
 
         self._worker.start()
-        self._scheduler.start()
+        self._scheduler_thread.start()
 
         if not scheduler_enabled and run_immediately:
             self.enqueue_run_once(source="startup")
@@ -236,7 +229,7 @@ class WatcherService:
         except Exception:
             pass
         try:
-            self._scheduler.join(timeout=5)
+            self._scheduler_thread.join(timeout=5)
         except Exception:
             pass
 
@@ -256,69 +249,6 @@ class WatcherService:
             except Exception:
                 keys.append(repo_cfg.name)
         return keys
-
-    def _refresh_global_next_run_at_locked(self) -> None:
-        if not self._scheduler_enabled:
-            self._next_run_at = None
-            return
-        if not self._repo_next_run_at:
-            self._next_run_at = None
-            return
-        self._next_run_at = min(self._repo_next_run_at.values())
-
-    def _init_repo_schedule_locked(self, *, run_immediately: bool) -> None:
-        config = self._config
-        self._repo_next_run_at.clear()
-        if config is None:
-            self._next_run_at = None
-            return
-
-        now = time.time()
-        base = max(60, int(config.interval_seconds))
-        for key in self._enabled_repo_keys(config):
-            self._repo_next_run_at[key] = now if run_immediately else now + base
-
-    def _sync_repo_schedule_locked(self) -> None:
-        config = self._config
-        if config is None:
-            self._repo_next_run_at.clear()
-            self._next_run_at = None
-            return
-
-        enabled_keys = set(self._enabled_repo_keys(config))
-        now = time.time()
-        for key in list(self._repo_next_run_at.keys()):
-            if key not in enabled_keys:
-                self._repo_next_run_at.pop(key, None)
-        for key in enabled_keys:
-            if key not in self._repo_next_run_at:
-                self._repo_next_run_at[key] = now
-
-        self._refresh_global_next_run_at_locked()
-
-    def _recommended_interval_seconds(self, config: AppConfig, repo_state: dict[str, Any]) -> int:
-        base = max(60, int(getattr(config, "interval_seconds", 172800) or 172800))
-        update = repo_state.get("update", {}) if isinstance(repo_state.get("update"), dict) else {}
-        median = update.get("median_interval_seconds")
-        if isinstance(median, (int, float)) and float(median) > 0:
-            return max(base, int(float(median) * 1.1))
-        return base
-
-    def _compute_next_repo_run_at(self, config: AppConfig, repo_state: dict[str, Any], *, now: float) -> float:
-        interval = float(self._recommended_interval_seconds(config, repo_state))
-        stats = repo_state.get("stats", {}) if isinstance(repo_state.get("stats"), dict) else {}
-        ok = stats.get("last_check_ok")
-        last_error_type = str(stats.get("last_error_type") or "")
-        had_net = bool(stats.get("last_check_had_network_error", False))
-
-        if ok is True:
-            return now + interval
-
-        if last_error_type == "network" or had_net:
-            retry_seconds = float(self._rng.uniform(2 * 3600, 6 * 3600))
-            return now + retry_seconds
-
-        return now + interval
 
     def reload_config(self) -> None:
         with self._lock:
@@ -347,7 +277,7 @@ class WatcherService:
                 logging.exception("Failed applying overrides; continuing with base config")
 
             self._config = config
-            self._sync_repo_schedule_locked()
+            self._scheduler_service.sync_schedule(config)
 
     def auth_username(self) -> str:
         with self._lock:
@@ -440,13 +370,12 @@ class WatcherService:
 
     def set_scheduler(self, enabled: bool) -> None:
         with self._lock:
-            self._scheduler_enabled = bool(enabled)
-            if self._scheduler_enabled:
-                if not self._repo_next_run_at:
-                    self._init_repo_schedule_locked(run_immediately=True)
-                self._refresh_global_next_run_at_locked()
-            else:
-                self._next_run_at = None
+            self._scheduler_service.set_enabled(bool(enabled))
+            if self._scheduler_service.enabled:
+                if not self._scheduler_service.repo_next_run_at:
+                    self._scheduler_service.init_schedule(self._config, run_immediately=True)
+                else:
+                    self._scheduler_service.sync_schedule(self._config)
 
     def update_settings(self, payload: dict[str, Any]) -> None:
         overrides = _read_json_file(self._overrides_path)
@@ -592,9 +521,9 @@ class WatcherService:
         with self._lock:
             config = self._config
             run_snapshot = self._run_queue.snapshot()
-            next_run_at = (
-                min(self._repo_next_run_at.values()) if self._scheduler_enabled and self._repo_next_run_at else None
-            )
+            scheduler_enabled = self._scheduler_service.enabled
+            next_run_at = self._scheduler_service.next_run_at
+            repos_scheduled = len(self._scheduler_service.repo_next_run_at)
             base_interval_seconds = int(config.interval_seconds) if config is not None else None
             return {
                 "started_at": self._started_at,
@@ -607,11 +536,11 @@ class WatcherService:
                 "config_error": self._config_error,
                 "last_config_reload_at": self._last_config_reload_at,
                 "scheduler": {
-                    "enabled": self._scheduler_enabled,
+                    "enabled": scheduler_enabled,
                     "next_run_at": datetime.fromtimestamp(next_run_at, tz=timezone.utc).isoformat() if next_run_at else None,
                     "mode": "adaptive_per_repo",
                     "base_interval_seconds": base_interval_seconds,
-                    "repos_scheduled": len(self._repo_next_run_at),
+                    "repos_scheduled": repos_scheduled,
                 },
                 "run": run_snapshot,
                 "config": _public_config(config) if config is not None else None,
@@ -841,8 +770,8 @@ class WatcherService:
     def list_repo_summaries(self) -> list[dict[str, Any]]:
         with self._lock:
             config = copy.deepcopy(self._config) if self._config is not None else None
-            next_runs = dict(self._repo_next_run_at)
-            scheduler_enabled = bool(self._scheduler_enabled)
+            next_runs = dict(self._scheduler_service.repo_next_run_at)
+            scheduler_enabled = bool(self._scheduler_service.enabled)
 
         if config is None:
             raise RuntimeError("Config not loaded")
@@ -884,7 +813,7 @@ class WatcherService:
                     "update": update,
                     "downloaded_releases_total": downloaded_releases,
                     "next_run_at": datetime.fromtimestamp(next_run_at, tz=timezone.utc).isoformat() if next_run_at else None,
-                    "recommended_interval_seconds": self._recommended_interval_seconds(config, repo_state),
+                    "recommended_interval_seconds": self._scheduler_service.recommended_interval_seconds(config, repo_state),
                 }
             )
 
@@ -897,7 +826,7 @@ class WatcherService:
 
         with self._lock:
             config = copy.deepcopy(self._config) if self._config is not None else None
-            next_run_at = self._repo_next_run_at.get(repo_key) if self._scheduler_enabled else None
+            next_run_at = self._scheduler_service.repo_next_run_at.get(repo_key) if self._scheduler_service.enabled else None
 
         if config is None:
             raise RuntimeError("Config not loaded")
@@ -942,7 +871,7 @@ class WatcherService:
             "update": update,
             "downloaded_releases_total": downloaded_releases,
             "next_run_at": datetime.fromtimestamp(next_run_at, tz=timezone.utc).isoformat() if next_run_at else None,
-            "recommended_interval_seconds": self._recommended_interval_seconds(config, repo_state),
+            "recommended_interval_seconds": self._scheduler_service.recommended_interval_seconds(config, repo_state),
         }
 
     def get_repo_activity(self, repo_key: str, *, limit: int = 200) -> list[dict[str, Any]]:
@@ -1133,35 +1062,28 @@ class WatcherService:
             logging.exception("run_once failed")
         finally:
             now = time.time()
-            if config_snapshot is not None and processed_keys and self._scheduler_enabled:
+            if config_snapshot is not None and processed_keys and self._scheduler_service.enabled:
                 try:
                     state = load_state(config_snapshot.state_file)
                 except Exception:
                     state = {"repos": {}}
                 repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
                 with self._lock:
-                    for key in processed_keys:
-                        repo_state = repos_state.get(key, {}) if isinstance(repos_state.get(key), dict) else {}
-                        self._repo_next_run_at[key] = self._compute_next_repo_run_at(config_snapshot, repo_state, now=now)
-                    self._sync_repo_schedule_locked()
-                    self._refresh_global_next_run_at_locked()
+                    self._scheduler_service.update_processed_repo_runs(
+                        config_snapshot,
+                        repos_state,
+                        processed_keys=processed_keys,
+                        now=now,
+                    )
             self._run_queue.finish_run(exit_code=exit_code, error=error)
 
     def _scheduler_loop(self) -> None:
         while not self._stop_event.is_set():
             now = time.time()
-            due_repo: str | None = None
-            next_run: float | None = None
             with self._lock:
-                enabled = self._scheduler_enabled
+                enabled = self._scheduler_service.enabled
                 run_busy = self._run_queue.is_busy()
-                if enabled and self._repo_next_run_at:
-                    next_run = min(self._repo_next_run_at.values())
-                    if not run_busy:
-                        for key, ts in self._repo_next_run_at.items():
-                            if ts <= now and (due_repo is None or ts < self._repo_next_run_at.get(due_repo, ts)):
-                                due_repo = key
-                self._next_run_at = next_run if enabled else None
+                due_repo, next_run = self._scheduler_service.poll_due_repo(now=now, run_busy=run_busy)
 
             if not enabled or next_run is None:
                 self._stop_event.wait(timeout=0.5)
@@ -1172,8 +1094,7 @@ class WatcherService:
                 if queued:
                     with self._lock:
                         # Temporary placeholder to avoid rapid re-queue attempts.
-                        self._repo_next_run_at[due_repo] = now + 60
-                        self._refresh_global_next_run_at_locked()
+                        self._scheduler_service.defer_repo(due_repo, now=now, seconds=60.0)
                 continue
 
             self._stop_event.wait(timeout=min(0.5, max(0.0, next_run - now)))
