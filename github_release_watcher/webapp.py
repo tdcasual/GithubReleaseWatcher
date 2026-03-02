@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import queue
 import random
 import secrets
 import threading
@@ -19,6 +18,7 @@ from urllib.parse import parse_qs, urlsplit
 from .auth_service import AuthService, _default_auth_config, _load_auth_config, _pbkdf2_hash, _verify_password
 from .config import AppConfig, ConfigError, RepoConfig, WebDAVConfig, load_config
 from .github import parse_repo_spec
+from .run_queue import RunQueueService
 from .state import load_state
 from .webapp_payloads import (
     _compile_regex_list,
@@ -189,16 +189,14 @@ class WatcherService:
 
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
-        self._queue: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._run_queue = RunQueueService(lock=self._lock, now_iso=_utc_now_iso)
+        # Backward compatibility for tests and internal references.
+        self._queue = self._run_queue.queue
 
         self._scheduler_enabled = True
         self._next_run_at: float | None = None
         self._repo_next_run_at: dict[str, float] = {}
         self._rng = random.Random()
-
-        self._run_requested = False
-        self._run_in_progress = False
-        self._run_id = 0
 
         self._started_at = _utc_now_iso()
         self._last_config_reload_at: str | None = None
@@ -206,8 +204,6 @@ class WatcherService:
         self._config: AppConfig | None = None
         self._overrides: dict[str, Any] = {}
         self._auth_config: dict[str, Any] = _default_auth_config()
-
-        self._last_run: dict[str, Any] | None = None
 
         self.reload_config()
 
@@ -436,27 +432,11 @@ class WatcherService:
                         if key not in existing:
                             raise ValueError("unknown repo")
 
-            if self._run_requested or self._run_in_progress:
-                return False
-            self._run_requested = True
-            task: dict[str, Any] = {"type": "run_once"}
-            if repo_keys is not None:
-                task["repo_keys"] = list(repo_keys)
-            else:
-                task["repo_key"] = repo_key
-            self._queue.put(task)
-            self._last_run = {
-                "id": self._run_id + 1,
-                "source": source,
-                "repo": repo_key,
-                "repos": list(repo_keys) if repo_keys is not None else None,
-                "queued_at": _utc_now_iso(),
-                "started_at": None,
-                "finished_at": None,
-                "exit_code": None,
-                "error": None,
-            }
-            return True
+            return self._run_queue.enqueue(
+                source=source,
+                repo_key=repo_key,
+                repo_keys=repo_keys,
+            )
 
     def set_scheduler(self, enabled: bool) -> None:
         with self._lock:
@@ -611,6 +591,7 @@ class WatcherService:
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             config = self._config
+            run_snapshot = self._run_queue.snapshot()
             next_run_at = (
                 min(self._repo_next_run_at.values()) if self._scheduler_enabled and self._repo_next_run_at else None
             )
@@ -632,11 +613,7 @@ class WatcherService:
                     "base_interval_seconds": base_interval_seconds,
                     "repos_scheduled": len(self._repo_next_run_at),
                 },
-                "run": {
-                    "requested": self._run_requested,
-                    "in_progress": self._run_in_progress,
-                    "last": self._last_run,
-                },
+                "run": run_snapshot,
                 "config": _public_config(config) if config is not None else None,
             }
 
@@ -1096,9 +1073,8 @@ class WatcherService:
 
     def _worker_loop(self) -> None:
         while not self._stop_event.is_set():
-            try:
-                task = self._queue.get(timeout=0.5)
-            except queue.Empty:
+            task = self._run_queue.try_pop_task(timeout=0.5)
+            if task is None:
                 continue
 
             if task.get("type") == "run_once":
@@ -1108,16 +1084,9 @@ class WatcherService:
 
     def _do_run_once(self, repo_key: str | None, *, repo_keys: list[str] | None = None) -> None:
         with self._lock:
-            self._run_requested = False
-            if self._run_in_progress:
+            if self._run_queue.begin_run() is None:
                 return
-            self._run_in_progress = True
-            self._run_id += 1
-            run_id = self._run_id
             config_snapshot = copy.deepcopy(self._config) if self._config is not None else None
-            if self._last_run:
-                self._last_run["id"] = run_id
-                self._last_run["started_at"] = _utc_now_iso()
 
         exit_code: int | None = None
         error: str | None = None
@@ -1176,12 +1145,7 @@ class WatcherService:
                         self._repo_next_run_at[key] = self._compute_next_repo_run_at(config_snapshot, repo_state, now=now)
                     self._sync_repo_schedule_locked()
                     self._refresh_global_next_run_at_locked()
-            with self._lock:
-                self._run_in_progress = False
-                if self._last_run:
-                    self._last_run["finished_at"] = _utc_now_iso()
-                    self._last_run["exit_code"] = exit_code
-                    self._last_run["error"] = error
+            self._run_queue.finish_run(exit_code=exit_code, error=error)
 
     def _scheduler_loop(self) -> None:
         while not self._stop_event.is_set():
@@ -1190,7 +1154,7 @@ class WatcherService:
             next_run: float | None = None
             with self._lock:
                 enabled = self._scheduler_enabled
-                run_busy = self._run_requested or self._run_in_progress
+                run_busy = self._run_queue.is_busy()
                 if enabled and self._repo_next_run_at:
                     next_run = min(self._repo_next_run_at.values())
                     if not run_busy:
