@@ -86,6 +86,8 @@ class UIMobileAccessibilityTests(unittest.TestCase):
         content = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
         index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
         app_js = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        logs_view_js = (STATIC_DIR / "logs-view.js").read_text(encoding="utf-8")
+        logs_source = f"{app_js}\n{logs_view_js}"
         self.assertIn('id="logs"', index_html, "logs container should exist.")
         self.assertIn('class="logs logs-feed"', index_html, "logs container should use feed layout class.")
         self.assertIn('role="log"', index_html, "logs container should expose log role for assistive tools.")
@@ -99,14 +101,14 @@ class UIMobileAccessibilityTests(unittest.TestCase):
         self.assertIn(".log-detail-advanced", content, "error details should include advanced details panel.")
         self.assertIn(".log-detail-advanced-row", content, "advanced details panel should render structured rows.")
         self.assertIn(".log-detail-advanced-toggle.is-critical", content, "critical errors should have emphasized advanced-details toggle style.")
-        self.assertIn('tone === "bad"', app_js, "only error-toned logs should render detailed blocks.")
-        self.assertIn("details.hidden = !expanded", app_js, "error details should toggle expanded/collapsed state.")
-        self.assertIn("buildDisplayLogGroups", app_js, "log rendering should aggregate repeated events before display.")
-        self.assertIn("formatLogPathTail", app_js, "error details should show condensed path tail by default.")
-        self.assertIn("summarizeLogDetailMessage", app_js, "error details should show a concise message summary by default.")
-        self.assertIn("shouldAutoExpandAdvancedDetails", app_js, "critical errors should auto-expand advanced details.")
-        self.assertIn("detailPanel.hidden = !autoExpandAdvanced", app_js, "advanced details panel should initialize by severity policy.")
-        self.assertIn("detailToggle.textContent = next ? \"收起细节\" : \"技术细节\"", app_js, "advanced details toggle should update label.")
+        self.assertIn('tone === "bad"', logs_source, "only error-toned logs should render detailed blocks.")
+        self.assertIn("details.hidden = !expanded", logs_source, "error details should toggle expanded/collapsed state.")
+        self.assertIn("buildDisplayLogGroups", logs_source, "log rendering should aggregate repeated events before display.")
+        self.assertIn("formatLogPathTail", logs_source, "error details should show condensed path tail by default.")
+        self.assertIn("summarizeLogDetailMessage", logs_source, "error details should show a concise message summary by default.")
+        self.assertIn("shouldAutoExpandAdvancedDetails", logs_source, "critical errors should auto-expand advanced details.")
+        self.assertIn("detailPanel.hidden = !autoExpandAdvanced", logs_source, "advanced details panel should initialize by severity policy.")
+        self.assertIn("detailToggle.textContent = next ? \"收起细节\" : \"技术细节\"", logs_source, "advanced details toggle should update label.")
 
 
 if __name__ == "__main__":
