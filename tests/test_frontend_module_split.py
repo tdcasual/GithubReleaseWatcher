@@ -14,6 +14,7 @@ class FrontendModuleSplitTests(unittest.TestCase):
         settings_pos = html.find('src="/settings-controller.js"')
         storage_diag_pos = html.find('src="/storage-diagnostics.js"')
         batch_selectors_pos = html.find('src="/batch-selectors.js"')
+        batch_actions_pos = html.find('src="/batch-actions.js"')
         app_pos = html.find('src="/app.js"')
         self.assertGreaterEqual(api_pos, 0)
         self.assertGreaterEqual(fmt_pos, 0)
@@ -22,6 +23,7 @@ class FrontendModuleSplitTests(unittest.TestCase):
         self.assertGreaterEqual(settings_pos, 0)
         self.assertGreaterEqual(storage_diag_pos, 0)
         self.assertGreaterEqual(batch_selectors_pos, 0)
+        self.assertGreaterEqual(batch_actions_pos, 0)
         self.assertGreaterEqual(app_pos, 0)
         self.assertLess(api_pos, app_pos)
         self.assertLess(fmt_pos, app_pos)
@@ -30,6 +32,7 @@ class FrontendModuleSplitTests(unittest.TestCase):
         self.assertLess(settings_pos, app_pos)
         self.assertLess(storage_diag_pos, app_pos)
         self.assertLess(batch_selectors_pos, app_pos)
+        self.assertLess(batch_actions_pos, app_pos)
 
     def test_app_uses_shared_global_modules(self) -> None:
         app_js = Path("github_release_watcher/static/app.js").read_text(encoding="utf-8")
@@ -40,6 +43,7 @@ class FrontendModuleSplitTests(unittest.TestCase):
         self.assertIn("window.GRWSettingsController", app_js)
         self.assertIn("window.GRWStorageDiagnostics", app_js)
         self.assertIn("window.GRWBatchSelectors", app_js)
+        self.assertIn("window.GRWBatchActions", app_js)
         self.assertNotIn("const API = {", app_js)
         self.assertNotIn("function renderStructuredLogs(", app_js)
         self.assertNotIn("function getRepoListView(", app_js)
@@ -47,6 +51,8 @@ class FrontendModuleSplitTests(unittest.TestCase):
         self.assertNotIn("function formatStorageHealthTopRepos(", app_js)
         self.assertNotIn("function refreshStorageDiagnostics(", app_js)
         self.assertNotIn("function batchSelectVisible(", app_js)
+        self.assertNotIn("function batchSetEnabled(", app_js)
+        self.assertNotIn("function batchRunSelected(", app_js)
 
 
 if __name__ == "__main__":
