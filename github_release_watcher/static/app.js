@@ -8,6 +8,7 @@ const renderStructuredLogs = window.GRWLogsView?.renderStructuredLogs;
 const createRepoController = window.GRWRepoController?.createRepoController;
 const createSettingsController = window.GRWSettingsController?.createSettingsController;
 const createStorageDiagnosticsController = window.GRWStorageDiagnostics?.createStorageDiagnosticsController;
+const createBatchSelectorsController = window.GRWBatchSelectors?.createBatchSelectorsController;
 
 if (
   !API ||
@@ -19,7 +20,8 @@ if (
   !renderStructuredLogs ||
   !createRepoController ||
   !createSettingsController ||
-  !createStorageDiagnosticsController
+  !createStorageDiagnosticsController ||
+  !createBatchSelectorsController
 ) {
   throw new Error("Shared frontend modules not loaded");
 }
@@ -107,6 +109,21 @@ const storageDiagnosticsController = createStorageDiagnosticsController({
   setLastSyncCacheAnomalyRepoKeys: (value) => {
     lastSyncCacheAnomalyRepoKeys = value instanceof Set ? value : new Set();
   },
+});
+
+const batchSelectorsController = createBatchSelectorsController({
+  getVisibleRepoKeys: () => getVisibleRepoKeys(),
+  getSelectedRepoKeysSet: () => selectedRepoKeys,
+  setSelectedRepoKeysSet: (next) => {
+    selectedRepoKeys = next instanceof Set ? next : new Set();
+  },
+  setBatchActionHint: (message, kind) => setBatchActionHint(message, kind),
+  renderRepos: () => renderRepos(),
+  isRepoEnabledForRun: (key) => isRepoEnabledForRun(key),
+  isRepoInErrorState: (key) => isRepoInErrorState(key),
+  isRepoInCacheAnomalyState: (key) => isRepoInCacheAnomalyState(key),
+  isWebdavStorageMode: () => isWebdavStorageMode(),
+  getHasSyncCacheSnapshot: () => hasSyncCacheSnapshot,
 });
 
 function getFocusableTriggerEl() {
@@ -1083,98 +1100,15 @@ async function runNow() {
   }
 }
 
-function batchSelectVisible() {
-  const visible = getVisibleRepoKeys();
-  if (!visible.length) {
-    setBatchActionHint("当前筛选结果为空，无可选仓库。", "danger");
-    return;
-  }
-  let added = 0;
-  for (const key of visible) {
-    if (selectedRepoKeys.has(key)) continue;
-    selectedRepoKeys.add(key);
-    added += 1;
-  }
-  const msg = added > 0 ? `已新增选择 ${added} 个仓库。` : `当前筛选内 ${visible.length} 个仓库已全部选中。`;
-  setBatchActionHint(msg, "");
-  renderRepos();
-}
+const batchSelectVisible = () => batchSelectorsController.batchSelectVisible();
 
-function batchSelectByFilter(predicate, successMessage, emptyMessage) {
-  const visible = getVisibleRepoKeys();
-  if (!visible.length) {
-    setBatchActionHint("当前筛选结果为空，无可选仓库。", "danger");
-    return;
-  }
-  let selectedNow = 0;
-  for (const key of visible) {
-    if (!predicate(key)) continue;
-    if (selectedRepoKeys.has(key)) continue;
-    selectedRepoKeys.add(key);
-    selectedNow += 1;
-  }
-  if (selectedNow <= 0) {
-    setBatchActionHint(emptyMessage, "danger");
-    renderRepos();
-    return;
-  }
-  setBatchActionHint(successMessage(selectedNow), "");
-  renderRepos();
-}
+const batchInvertVisible = () => batchSelectorsController.batchInvertVisible();
 
-function batchInvertVisible() {
-  const visible = getVisibleRepoKeys();
-  if (!visible.length) {
-    setBatchActionHint("当前筛选结果为空，无法反选。", "danger");
-    return;
-  }
-  let selectedNow = 0;
-  let unselectedNow = 0;
-  for (const key of visible) {
-    if (selectedRepoKeys.has(key)) {
-      selectedRepoKeys.delete(key);
-      unselectedNow += 1;
-    } else {
-      selectedRepoKeys.add(key);
-      selectedNow += 1;
-    }
-  }
-  const msg = `反选完成：选中 ${selectedNow} 个，取消 ${unselectedNow} 个。`;
-  setBatchActionHint(msg, "");
-  renderRepos();
-}
+const batchSelectEnabledVisible = () => batchSelectorsController.batchSelectEnabledVisible();
 
-function batchSelectEnabledVisible() {
-  batchSelectByFilter(
-    (key) => isRepoEnabledForRun(key),
-    (count) => `已选中 ${count} 个启用仓库。`,
-    "当前筛选结果中没有可新增的启用仓库。"
-  );
-}
+const batchSelectErrorVisible = () => batchSelectorsController.batchSelectErrorVisible();
 
-function batchSelectErrorVisible() {
-  batchSelectByFilter(
-    (key) => isRepoInErrorState(key),
-    (count) => `已选中 ${count} 个异常仓库。`,
-    "当前筛选结果中没有可新增的异常仓库。"
-  );
-}
-
-function batchSelectCacheAnomalyVisible() {
-  if (!isWebdavStorageMode()) {
-    setBatchActionHint("当前存储模式不是 WebDAV，无法选择缓存异常仓库。", "danger");
-    return;
-  }
-  if (!hasSyncCacheSnapshot) {
-    setBatchActionHint("请先在设置中执行一次“同步缓存”，再选择缓存异常仓库。", "danger");
-    return;
-  }
-  batchSelectByFilter(
-    (key) => isRepoInCacheAnomalyState(key),
-    (count) => `已选中 ${count} 个缓存异常仓库。`,
-    "当前筛选结果中没有可新增的缓存异常仓库。"
-  );
-}
+const batchSelectCacheAnomalyVisible = () => batchSelectorsController.batchSelectCacheAnomalyVisible();
 
 async function batchSetEnabled(enabled, triggerBtn) {
   const selected = getSelectedRepoKeys();
