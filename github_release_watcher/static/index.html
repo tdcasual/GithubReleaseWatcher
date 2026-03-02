@@ -123,17 +123,28 @@
               <button id="addRepoBtn" class="btn" type="button">添加仓库</button>
             </div>
           </div>
-          <div class="batch-tools" role="group" aria-label="仓库批量操作工具栏" aria-describedby="batchActionHint">
-            <span id="batchSelectedCount" class="muted">已选 0 个仓库</span>
-            <button id="batchSelectVisibleBtn" class="btn" type="button">全选当前筛选</button>
-            <button id="batchInvertVisibleBtn" class="btn" type="button">反选当前筛选</button>
-            <button id="batchSelectEnabledBtn" class="btn" type="button">选中启用仓库</button>
-            <button id="batchSelectErrorBtn" class="btn" type="button">选中异常仓库</button>
-            <button id="batchSelectCacheAnomalyBtn" class="btn" type="button">选中缓存异常</button>
-            <button id="batchRunBtn" class="btn" type="button">批量检查</button>
-            <button id="batchEnableBtn" class="btn" type="button">批量启用</button>
-            <button id="batchDisableBtn" class="btn" type="button">批量停用</button>
-            <button id="batchClearBtn" class="btn" type="button">清空选择</button>
+          <div id="batchToolsWrap" class="batch-tools-wrap" data-expanded="true">
+            <button
+              id="batchToolsToggleBtn"
+              class="btn batch-tools-toggle"
+              type="button"
+              aria-expanded="true"
+              aria-controls="batchToolsPanel"
+            >
+              批量操作（已选 0）
+            </button>
+            <div id="batchToolsPanel" class="batch-tools" role="group" aria-label="仓库批量操作工具栏" aria-describedby="batchActionHint">
+              <span id="batchSelectedCount" class="muted">已选 0 个仓库</span>
+              <button id="batchSelectVisibleBtn" class="btn" type="button">全选当前筛选</button>
+              <button id="batchInvertVisibleBtn" class="btn" type="button">反选当前筛选</button>
+              <button id="batchSelectEnabledBtn" class="btn" type="button">选中启用仓库</button>
+              <button id="batchSelectErrorBtn" class="btn" type="button">选中异常仓库</button>
+              <button id="batchSelectCacheAnomalyBtn" class="btn" type="button">选中缓存异常</button>
+              <button id="batchRunBtn" class="btn" type="button">批量检查</button>
+              <button id="batchEnableBtn" class="btn" type="button">批量启用</button>
+              <button id="batchDisableBtn" class="btn" type="button">批量停用</button>
+              <button id="batchClearBtn" class="btn" type="button">清空选择</button>
+            </div>
           </div>
           <p id="batchActionHint" class="hint" role="status" aria-live="polite"></p>
           <div id="repos" class="repos"></div>
@@ -151,7 +162,7 @@
             </div>
           </div>
           <p id="logFileHint" class="hint" role="status" aria-live="polite"></p>
-          <pre id="logs" class="logs">加载中…</pre>
+          <div id="logs" class="logs logs-feed" role="log" aria-live="polite">加载中…</div>
           <p class="hint logs-scroll-hint">提示：该区域可上下滑动查看更多内容。</p>
         </section>
       </main>
