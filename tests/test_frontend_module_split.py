@@ -16,6 +16,7 @@ class FrontendModuleSplitTests(unittest.TestCase):
         batch_selectors_pos = html.find('src="/batch-selectors.js"')
         batch_actions_pos = html.find('src="/batch-actions.js"')
         mobile_behavior_pos = html.find('src="/mobile-behavior.js"')
+        app_runtime_pos = html.find('src="/app-runtime.js"')
         app_pos = html.find('src="/app.js"')
         self.assertGreaterEqual(api_pos, 0)
         self.assertGreaterEqual(fmt_pos, 0)
@@ -26,6 +27,7 @@ class FrontendModuleSplitTests(unittest.TestCase):
         self.assertGreaterEqual(batch_selectors_pos, 0)
         self.assertGreaterEqual(batch_actions_pos, 0)
         self.assertGreaterEqual(mobile_behavior_pos, 0)
+        self.assertGreaterEqual(app_runtime_pos, 0)
         self.assertGreaterEqual(app_pos, 0)
         self.assertLess(api_pos, app_pos)
         self.assertLess(fmt_pos, app_pos)
@@ -36,6 +38,7 @@ class FrontendModuleSplitTests(unittest.TestCase):
         self.assertLess(batch_selectors_pos, app_pos)
         self.assertLess(batch_actions_pos, app_pos)
         self.assertLess(mobile_behavior_pos, app_pos)
+        self.assertLess(app_runtime_pos, app_pos)
 
     def test_app_uses_shared_global_modules(self) -> None:
         app_js = Path("github_release_watcher/static/app.js").read_text(encoding="utf-8")
@@ -48,6 +51,7 @@ class FrontendModuleSplitTests(unittest.TestCase):
         self.assertIn("window.GRWBatchSelectors", app_js)
         self.assertIn("window.GRWBatchActions", app_js)
         self.assertIn("window.GRWMobileBehavior", app_js)
+        self.assertIn("window.GRWAppRuntime", app_js)
         self.assertNotIn("const API = {", app_js)
         self.assertNotIn("function renderStructuredLogs(", app_js)
         self.assertNotIn("function getRepoListView(", app_js)

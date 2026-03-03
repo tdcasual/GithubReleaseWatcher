@@ -9,7 +9,6 @@ import time
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from importlib import resources
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -24,6 +23,16 @@ from .settings_service import SettingsService
 from .state import load_state
 from .webapp_payloads import _safe_int
 from .webapp_api_router import handle_api_request
+from .webapp_handler_utils import (
+    allowed_cors_origin as _allowed_cors_origin_for_handler,
+    client_ip as _client_ip_for_handler,
+    handle_options_preflight as _handle_options_preflight,
+    is_secure_request as _is_secure_request_for_handler,
+    read_json_body as _read_json_body_for_handler,
+    send_json_response as _send_json_for_handler,
+    send_text_response as _send_text_for_handler,
+    serve_static_asset as _serve_static_for_handler,
+)
 from .webapp_overrides import _apply_overrides, _repo_key_from_spec
 from .watcher import run_once as watcher_run_once
 from .webdav import WebDAVClient
@@ -1024,60 +1033,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "internal_error"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
-        # CORS preflight: only echo same-origin requests.
-        split = urlsplit(self.path)
-        if split.path.startswith("/api/"):
-            origin = self._allowed_cors_origin()
-            if origin is None:
-                self.send_response(HTTPStatus.FORBIDDEN)
-                self.end_headers()
-                return
-            self.send_response(HTTPStatus.NO_CONTENT)
-            self.send_header("Access-Control-Allow-Origin", origin)
-            self.send_header("Vary", "Origin")
-            self.send_header("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.end_headers()
-            return
-        self.send_response(HTTPStatus.NO_CONTENT)
-        self.end_headers()
+        _handle_options_preflight(self)
 
     def _client_ip(self) -> str:
-        xff = str(self.headers.get("X-Forwarded-For") or "").strip()
-        if xff:
-            return xff.split(",")[0].strip()
-        return str(self.client_address[0] if self.client_address else "unknown")
+        return _client_ip_for_handler(self)
 
     def _is_secure_request(self) -> bool:
-        xfp = str(self.headers.get("X-Forwarded-Proto") or "").strip().lower()
-        if xfp:
-            return xfp == "https"
-        forwarded = str(self.headers.get("Forwarded") or "").lower()
-        if "proto=https" in forwarded:
-            return True
-        return bool(getattr(self.server, "server_port", None) == 443)
+        return _is_secure_request_for_handler(self)
 
     def _allowed_cors_origin(self) -> str | None:
-        origin = str(self.headers.get("Origin") or "").strip()
-        if not origin:
-            return None
-        try:
-            origin_split = urlsplit(origin)
-            host = str(self.headers.get("Host") or "").strip().lower()
-            if not origin_split.netloc or not host:
-                return None
-            if origin_split.netloc.lower() != host:
-                return None
-            return origin
-        except Exception:
-            return None
-
-    def _set_cors_headers(self) -> None:
-        origin = self._allowed_cors_origin()
-        if origin is None:
-            return
-        self.send_header("Access-Control-Allow-Origin", origin)
-        self.send_header("Vary", "Origin")
+        return _allowed_cors_origin_for_handler(self)
 
     def _handle(self) -> None:
         split = urlsplit(self.path)
@@ -1115,81 +1080,16 @@ class Handler(BaseHTTPRequestHandler):
         return self.server.auth.is_valid(token)
 
     def _read_json_body(self) -> dict[str, Any] | None:
-        length = self.headers.get("Content-Length")
-        if not length:
-            return {}
-        try:
-            n = int(length)
-        except ValueError:
-            self._send_json({"error": "invalid_content_length"}, status=HTTPStatus.BAD_REQUEST)
-            return None
-        if n < 0 or n > 256 * 1024:
-            self._send_json({"error": "payload_too_large"}, status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
-            return None
-        raw = self.rfile.read(n)
-        if not raw:
-            return {}
-        try:
-            payload = json.loads(raw.decode("utf-8"))
-        except Exception:
-            self._send_json({"error": "invalid_json"}, status=HTTPStatus.BAD_REQUEST)
-            return None
-        if not isinstance(payload, dict):
-            self._send_json({"error": "json_must_be_object"}, status=HTTPStatus.BAD_REQUEST)
-            return None
-        return payload
+        return _read_json_body_for_handler(self)
 
     def _send_json(self, data: Any, *, status: HTTPStatus = HTTPStatus.OK) -> None:
-        encoded = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        if self.path.startswith("/api/"):
-            self._set_cors_headers()
-        self.send_header("Content-Length", str(len(encoded)))
-        self.end_headers()
-        self.wfile.write(encoded)
+        _send_json_for_handler(self, data, status=status)
 
     def _send_text(self, text: str, *, status: HTTPStatus = HTTPStatus.OK, content_type: str = "text/plain; charset=utf-8") -> None:
-        encoded = text.encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(encoded)))
-        self.end_headers()
-        self.wfile.write(encoded)
+        _send_text_for_handler(self, text, status=status, content_type=content_type)
 
     def _serve_static(self, filename: str) -> None:
-        static_root = resources.files("github_release_watcher").joinpath("static")
-        candidate = static_root.joinpath(filename)
-        try:
-            data = candidate.read_bytes()
-        except FileNotFoundError:
-            self._send_text("Not found", status=HTTPStatus.NOT_FOUND)
-            return
-
-        content_type = "application/octet-stream"
-        if filename.endswith(".html"):
-            content_type = "text/html; charset=utf-8"
-        elif filename.endswith(".css"):
-            content_type = "text/css; charset=utf-8"
-        elif filename.endswith(".js"):
-            content_type = "application/javascript; charset=utf-8"
-        elif filename.endswith(".svg"):
-            content_type = "image/svg+xml"
-
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
-
-def _find_activity_handler() -> ActivityBuffer | None:
-    root = logging.getLogger()
-    for h in root.handlers:
-        if isinstance(h, ActivityBuffer):
-            return h
-    return None
+        _serve_static_for_handler(self, filename)
 
 
 def serve(

@@ -7,6 +7,7 @@ from pathlib import Path
 FILES = [
     "index.html",
     "app.js",
+    "app-runtime.js",
     "styles.css",
     "repo.js",
     "repo.html",
