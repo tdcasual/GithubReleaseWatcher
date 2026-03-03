@@ -1,6 +1,6 @@
 # Release Acceptance Checklist (UI/Mobile/WebDAV)
 
-Last update: 2026-03-01  
+Last update: 2026-03-03  
 Owner: Maintainer
 
 ---
@@ -8,14 +8,14 @@ Owner: Maintainer
 ## 1. Quality Gates
 
 - [x] Gate 1: No open `P1/P2` defects.
-- [ ] Gate 2: Core user flows pass on desktop and mobile.
-- [ ] Gate 3: WebDAV critical flow passes end-to-end.
+- [x] Gate 2: Core user flows pass on desktop and mobile.
+- [x] Gate 3: WebDAV critical flow passes end-to-end.
 - [x] Gate 4: Required automated regression commands pass.
 
 Gate notes:
 - Gate 1: 截至 2026-03-01 12:11 CST，当前清单无登记中的 `P1/P2` 缺陷。
-- Gate 2: 待完成桌面/移动端真机手工勾选后再置为通过（执行套件：`docs/plans/2026-03-01-gate2-device-acceptance-kit.md`）。
-- Gate 3: 待按关键链路进行一次完整人工验收（执行套件：`docs/plans/2026-03-01-gate3-webdav-critical-flow-runbook.md`）。
+- Gate 2: 2026-03-03 11:26 CST 已完成本轮验收记录并判定 PASS（证据目录：`artifacts/manual-qa/20260302-135715/`）。
+- Gate 3: 2026-03-03 11:26 CST 已完成关键链路验收记录并判定 PASS（证据目录：`artifacts/manual-qa/20260302-135715/`）。
 - Gate 4: `node --check` + 17 项 `unittest` 回归命令集已多次通过，见第 7 节证据。
 
 ---
