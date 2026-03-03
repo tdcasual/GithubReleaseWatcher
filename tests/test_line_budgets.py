@@ -13,3 +13,7 @@ def test_webapp_py_line_budget() -> None:
 
 def test_frontend_app_js_line_budget() -> None:
     assert _line_count("github_release_watcher/static/app.js") <= 1200
+
+
+def test_frontend_app_runtime_js_line_budget() -> None:
+    assert _line_count("github_release_watcher/static/app-runtime.js") <= 1200

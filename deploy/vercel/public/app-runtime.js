@@ -13,6 +13,8 @@ const createBatchActionsController = window.GRWBatchActions?.createBatchActionsC
 const createMobileBehaviorController = window.GRWMobileBehavior?.createMobileBehaviorController;
 const createAppUiUtils = window.GRWAppUiUtils?.createAppUiUtils;
 const createAuthController = window.GRWAppAuth?.createAuthController;
+const createSettingsDialogController = window.GRWAppSettingsDialog?.createSettingsDialogController;
+const createAppEventsController = window.GRWAppEvents?.createAppEventsController;
 
 if (
   !API ||
@@ -29,7 +31,9 @@ if (
   !createBatchActionsController ||
   !createMobileBehaviorController ||
   !createAppUiUtils ||
-  !createAuthController
+  !createAuthController ||
+  !createSettingsDialogController ||
+  !createAppEventsController
 ) {
   throw new Error("Shared frontend modules not loaded");
 }
@@ -301,33 +305,31 @@ const startLoginFlow = (message) => authController.startLoginFlow(message);
 
 const requireLogin = () => authController.requireLogin();
 
-function hasSettingsDialogUnsavedChanges() {
-  if (!settingsDialogDraftSnapshot || !draft) return false;
-  try {
-    return stableStringify(draft) !== stableStringify(settingsDialogDraftSnapshot);
-  } catch {
-    return false;
-  }
-}
+const settingsDialogController = createSettingsDialogController({
+  getEl: $,
+  getDraft: () => draft,
+  getSettingsDialogDraftSnapshot: () => settingsDialogDraftSnapshot,
+  stableStringify: (value) => stableStringify(value),
+  getLastWebdavTest: () => lastWebdavTest,
+  setLastWebdavTest: (value) => {
+    lastWebdavTest = value;
+  },
+  revealHintIfNeeded: (el) => revealHintIfNeeded(el),
+});
 
-function renderWebdavTestHint() {
-  const el = $("webdavTestHint");
-  if (!el) return;
-  if (!lastWebdavTest) {
-    el.className = "hint";
-    el.textContent = "上次测试：未测试";
-    revealHintIfNeeded(el);
-    return;
-  }
-  el.className = lastWebdavTest.ok ? "hint" : "hint danger";
-  el.textContent = `上次测试：${lastWebdavTest.time} · ${lastWebdavTest.ok ? "连接正常" : `失败：${lastWebdavTest.message}`}`;
-  revealHintIfNeeded(el);
-}
+const hasSettingsDialogUnsavedChanges = () => settingsDialogController.hasSettingsDialogUnsavedChanges();
 
-function invalidateWebdavTest() {
-  lastWebdavTest = null;
-  renderWebdavTestHint();
-}
+const renderWebdavTestHint = () => settingsDialogController.renderWebdavTestHint();
+
+const invalidateWebdavTest = () => settingsDialogController.invalidateWebdavTest();
+
+const syncSettingsFormFromDraft = () => settingsDialogController.syncSettingsFormFromDraft();
+
+const syncDraftFromSettingsForm = () => settingsDialogController.syncDraftFromSettingsForm();
+
+const recordWebdavTestResult = (result) => {
+  lastWebdavTest = result;
+};
 
 function repoDraft(key) {
   if (!draft.repos[key]) {
@@ -741,45 +743,6 @@ function materializeDraftFromConfig() {
   }
 }
 
-function syncSettingsFormFromDraft() {
-  const mode = draft?.storage?.mode || "local";
-  $("storageModeLocal").checked = mode === "local";
-  $("storageModeWebdav").checked = mode === "webdav";
-
-  $("localDirInput").value = draft?.storage?.local_dir || "";
-  $("webdavBaseUrl").value = draft?.storage?.webdav?.base_url || "";
-  $("webdavUsername").value = draft?.storage?.webdav?.username || "";
-  $("webdavTimeout").value = String(draft?.storage?.webdav?.timeout_seconds ?? 60);
-  $("webdavVerifyTls").checked = !!(draft?.storage?.webdav?.verify_tls ?? true);
-  $("webdavUploadConcurrency").value = String(draft?.storage?.webdav?.upload_concurrency ?? 2);
-  $("webdavMaxRetries").value = String(draft?.storage?.webdav?.max_retries ?? 3);
-  $("webdavRetryBackoffSeconds").value = String(draft?.storage?.webdav?.retry_backoff_seconds ?? 2);
-  $("webdavVerifyAfterUpload").checked = !!(draft?.storage?.webdav?.verify_after_upload ?? true);
-  $("webdavUploadTempSuffix").value = String(draft?.storage?.webdav?.upload_temp_suffix || ".uploading");
-  $("webdavCleanupMode").value = String(draft?.storage?.webdav?.cleanup_mode || "delete");
-
-  const fields = $("webdavFields");
-  fields.classList.toggle("hidden", mode !== "webdav");
-  renderWebdavTestHint();
-}
-
-function syncDraftFromSettingsForm() {
-  const mode = $("storageModeWebdav").checked ? "webdav" : "local";
-  draft.storage.mode = mode;
-  draft.storage.local_dir = $("localDirInput").value.trim();
-  draft.storage.webdav.base_url = $("webdavBaseUrl").value.trim();
-  draft.storage.webdav.username = $("webdavUsername").value.trim();
-  draft.storage.webdav.verify_tls = $("webdavVerifyTls").checked;
-  draft.storage.webdav.timeout_seconds = Number($("webdavTimeout").value.trim() || 60);
-  draft.storage.webdav.upload_concurrency = Number($("webdavUploadConcurrency").value.trim() || 2);
-  draft.storage.webdav.max_retries = Number($("webdavMaxRetries").value.trim() || 3);
-  draft.storage.webdav.retry_backoff_seconds = Number($("webdavRetryBackoffSeconds").value.trim() || 2);
-  draft.storage.webdav.verify_after_upload = $("webdavVerifyAfterUpload").checked;
-  draft.storage.webdav.upload_temp_suffix = String($("webdavUploadTempSuffix").value || ".uploading").trim();
-  draft.storage.webdav.cleanup_mode = String($("webdavCleanupMode").value || "delete").trim();
-  $("webdavFields").classList.toggle("hidden", mode !== "webdav");
-}
-
 function setConfigLoadedUI(loaded) {
   const runNowBtn = $("runNowBtn");
   runNowBtn.disabled = isBusy(runNowBtn) || !loaded;
@@ -1130,35 +1093,6 @@ function openRepoDialog() {
   setTimeout(() => $("newRepoName")?.focus(), 0);
 }
 
-async function copyText(text) {
-  try {
-    await navigator.clipboard?.writeText(text);
-    return true;
-  } catch {}
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("readonly", "true");
-    ta.style.position = "fixed";
-    ta.style.left = "-9999px";
-    ta.style.top = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
-    ta.remove();
-    return ok;
-  } catch {
-    return false;
-  }
-}
-
-async function copyLogs() {
-  const logsEl = $("logs");
-  const text = logsEl?.dataset?.rawText || logsEl?.textContent || "";
-  const ok = await copyText(text);
-  toast(ok ? "已复制活动。" : "复制失败，请手动选择复制。", ok ? "ok" : "warn");
-}
-
 function openSettingsDialog(options = {}) {
   const focusAuthPassword = !!options.focusAuthPassword;
   if (!draft) {
@@ -1184,352 +1118,30 @@ function openSettingsDialog(options = {}) {
   }, 0);
 }
 
-function wireEvents() {
-  $("runNowBtn").addEventListener("click", runNow);
-  $("settingsBtn").addEventListener("click", () => openSettingsDialog({ focusAuthPassword: false }));
-  $("logoutBtn").addEventListener("click", async () => {
-    const btn = $("logoutBtn");
-    setButtonBusy(btn, true, "退出中…");
-    try {
-      await API.post("/logout", {});
-    } catch {}
-    setUser(null);
-    try {
-      await requireLogin();
-      await withAuth(() => loadAll());
-      toast("已重新登录。", "ok");
-    } finally {
-      setButtonBusy(btn, false);
-      setUser(currentUser);
-    }
-  });
-  $("reloadBtn").addEventListener("click", async () => {
-    const btn = $("reloadBtn");
-    setButtonBusy(btn, true, "加载中…");
-    try {
-      await withAuth(() => API.post("/reload", {}));
-      await withAuth(() => loadAll());
-      toast("配置已重新加载。", "ok");
-    } catch (e) {
-      toast(`重新加载失败：${formatError(e)}`, "bad");
-    } finally {
-      setButtonBusy(btn, false);
-    }
-  });
-  $("saveBtn").addEventListener("click", async () => {
-    await saveSettings({ busyButtons: [$("saveBtn")] });
-  });
-  $("schedulerToggle").addEventListener("change", async (e) => {
-    const el = e.target;
-    const desired = !!el.checked;
-    el.disabled = true;
-    try {
-      await setScheduler(desired);
-      toast(desired ? "自动轮询已开启。" : "自动轮询已关闭。", "ok");
-    } catch (err) {
-      el.checked = !desired;
-      toast(`设置失败：${formatError(err)}`, "bad");
-    } finally {
-      el.disabled = false;
-    }
-  });
-  $("keepLastInput").addEventListener("input", () => {
-    setDirty(true);
-    renderRepos();
-  });
-  $("intervalInput").addEventListener("input", () => setDirty(true));
-  $("repoFilterInput").addEventListener("input", () => renderRepos());
-  $("repoStateFilterSelect").addEventListener("change", () => renderRepos());
-  $("repoSortSelect").addEventListener("change", () => renderRepos());
-  $("addRepoBtn").addEventListener("click", openRepoDialog);
-  $("copyLogsBtn").addEventListener("click", copyLogs);
-  $("batchSelectVisibleBtn").addEventListener("click", batchSelectVisible);
-  $("batchInvertVisibleBtn").addEventListener("click", batchInvertVisible);
-  $("batchSelectEnabledBtn").addEventListener("click", batchSelectEnabledVisible);
-  $("batchSelectErrorBtn").addEventListener("click", batchSelectErrorVisible);
-  $("batchSelectCacheAnomalyBtn").addEventListener("click", batchSelectCacheAnomalyVisible);
-  $("batchRunBtn").addEventListener("click", async () => batchRunSelected($("batchRunBtn")));
-  $("batchEnableBtn").addEventListener("click", async () => batchSetEnabled(true, $("batchEnableBtn")));
-  $("batchDisableBtn").addEventListener("click", async () => batchSetEnabled(false, $("batchDisableBtn")));
-  $("batchToolsToggleBtn").addEventListener("click", () => {
-    if (!isCompactMobileViewport()) return;
-    batchToolsExpanded = !batchToolsExpanded;
-    syncBatchToolsPresentation(getSelectedRepoKeys().length);
-  });
-  $("batchClearBtn").addEventListener("click", () => {
-    selectedRepoKeys.clear();
-    setBatchActionHint("已清空选择。", "");
-    renderRepos();
-  });
-  window.addEventListener("resize", () => {
-    syncBatchToolsPresentation(getSelectedRepoKeys().length);
-  });
-
-  const settingsForm = $("settingsDialog").querySelector("form");
-  settingsForm?.addEventListener("submit", (e) => e.preventDefault());
-  const repoForm = $("repoDialog").querySelector("form");
-  repoForm?.addEventListener("submit", (e) => e.preventDefault());
-
-  const settingsDialog = $("settingsDialog");
-  for (const btn of settingsDialog.querySelectorAll('button[value="cancel"]')) {
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      settingsDialogSaved = false;
-      if (hasSettingsDialogUnsavedChanges()) {
-        const ok = window.confirm("设置未保存，确定取消并丢弃本次修改吗？");
-        if (!ok) return;
-      }
-      try {
-        settingsDialog.close();
-      } catch {}
-    });
-  }
-  settingsDialog.addEventListener("cancel", (e) => {
-    settingsDialogSaved = false;
-    if (!hasSettingsDialogUnsavedChanges()) return;
-    const ok = window.confirm("设置未保存，确定取消并丢弃本次修改吗？");
-    if (!ok) e.preventDefault();
-  });
-  settingsDialog.addEventListener("close", () => {
-    const returnFocusEl = settingsDialogReturnFocusEl;
-    settingsDialogReturnFocusEl = null;
-    const saved = settingsDialogSaved;
-    settingsDialogSaved = false;
-
-    if ($("webdavPassword")) $("webdavPassword").value = "";
-    if ($("authPassword")) $("authPassword").value = "";
-    $("settingsHint").textContent = "";
-
-    if (!saved && settingsDialogDraftSnapshot) {
-      draft = settingsDialogDraftSnapshot;
-      dirty = settingsDialogDirtyBefore;
-      setDirty(dirty);
-      if ($("authUsername")) $("authUsername").value = settingsDialogAuthUsernameBefore || $("authUsername").value;
-      syncSettingsFormFromDraft();
-      renderRepos();
-    }
-
-    settingsDialogDraftSnapshot = null;
-    settingsDialogAuthUsernameBefore = "";
-    syncDialogOpenState();
-    if (!focusIfPossible(returnFocusEl)) focusIfPossible($("settingsBtn"));
-  });
-
-  const repoDialog = $("repoDialog");
-  for (const btn of repoDialog.querySelectorAll('button[value="cancel"]')) {
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      try {
-        repoDialog.close();
-      } catch {}
-    });
-  }
-  repoDialog.addEventListener("close", () => {
-    const returnFocusEl = repoDialogReturnFocusEl;
-    repoDialogReturnFocusEl = null;
-    syncDialogOpenState();
-    if (!focusIfPossible(returnFocusEl)) focusIfPossible($("addRepoBtn"));
-  });
-  const loginDialog = $("loginDialog");
-  loginDialog?.addEventListener("close", () => {
-    syncDialogOpenState();
-  });
-  for (const id of [
-    "storageModeLocal",
-    "storageModeWebdav",
-    "localDirInput",
-    "webdavBaseUrl",
-    "webdavUsername",
-    "webdavPassword",
-    "webdavTimeout",
-    "webdavVerifyTls",
-    "webdavUploadConcurrency",
-    "webdavMaxRetries",
-    "webdavRetryBackoffSeconds",
-    "webdavVerifyAfterUpload",
-    "webdavUploadTempSuffix",
-    "webdavCleanupMode",
-    "authUsername",
-    "authPassword",
-  ]) {
-    $(id).addEventListener("input", () => setDirty(true));
-    $(id).addEventListener("change", () => setDirty(true));
-  }
-  for (const id of [
-    "webdavBaseUrl",
-    "webdavUsername",
-    "webdavPassword",
-    "webdavTimeout",
-    "webdavVerifyTls",
-    "webdavUploadConcurrency",
-    "webdavMaxRetries",
-    "webdavRetryBackoffSeconds",
-    "webdavVerifyAfterUpload",
-    "webdavUploadTempSuffix",
-    "webdavCleanupMode",
-  ]) {
-    $(id).addEventListener("input", invalidateWebdavTest);
-    $(id).addEventListener("change", invalidateWebdavTest);
-  }
-  $("storageModeLocal").addEventListener("change", syncDraftFromSettingsForm);
-  $("storageModeWebdav").addEventListener("change", syncDraftFromSettingsForm);
-
-  $("testWebdavBtn").addEventListener("click", async () => {
-    const btn = $("testWebdavBtn");
-    setButtonBusy(btn, true, "测试中…");
-    $("settingsHint").textContent = "";
-    if (!$("storageModeWebdav").checked) {
-      toast("提示：当前不是 WebDAV 模式，仍可测试填写的连接信息。", "warn");
-    }
-    const patch = {
-      base_url: $("webdavBaseUrl").value.trim(),
-      username: $("webdavUsername").value.trim(),
-      password: $("webdavPassword").value || "",
-      verify_tls: $("webdavVerifyTls").checked,
-      timeout_seconds: Number($("webdavTimeout").value.trim() || 60),
-      upload_concurrency: Number($("webdavUploadConcurrency").value.trim() || 2),
-      max_retries: Number($("webdavMaxRetries").value.trim() || 3),
-      retry_backoff_seconds: Number($("webdavRetryBackoffSeconds").value.trim() || 2),
-      verify_after_upload: $("webdavVerifyAfterUpload").checked,
-      upload_temp_suffix: String($("webdavUploadTempSuffix").value || ".uploading").trim(),
-      cleanup_mode: String($("webdavCleanupMode").value || "delete").trim().toLowerCase(),
-    };
-    try {
-      const res = await withAuth(() => API.post("/storage/test", { webdav: patch }));
-      lastWebdavTest = {
-        time: new Date().toLocaleString(),
-        ok: !!res.ok,
-        message: String(res.error || ""),
-      };
-      renderWebdavTestHint();
-      toast(res.ok ? "WebDAV 连接正常。" : `WebDAV 测试失败：${res.error || ""}`, res.ok ? "ok" : "warn");
-    } catch (e) {
-      lastWebdavTest = { time: new Date().toLocaleString(), ok: false, message: formatError(e) };
-      renderWebdavTestHint();
-      toast(`WebDAV 测试失败：${formatError(e)}`, "bad");
-    } finally {
-      setButtonBusy(btn, false);
-    }
-  });
-
-  $("checkWebdavCapsBtn").addEventListener("click", async () => {
-    const btn = $("checkWebdavCapsBtn");
-    setButtonBusy(btn, true, "探测中…");
-    try {
-      await refreshStorageDiagnostics();
-      toast("能力探测已更新。", "ok");
-    } catch (e) {
-      toast(`能力探测失败：${formatError(e)}`, "bad");
-    } finally {
-      setButtonBusy(btn, false);
-    }
-  });
-
-  $("previewCleanupBtn").addEventListener("click", async () => {
-    const btn = $("previewCleanupBtn");
-    const hint = $("cleanupPreviewHint");
-    setButtonBusy(btn, true, "预演中…");
-    hint.className = "hint";
-    hint.textContent = "";
-    try {
-      const data = await withAuth(() => API.post("/cleanup/preview", {}));
-      const items = Array.isArray(data.items) ? data.items : [];
-      const total = items.reduce((acc, x) => acc + Number(x.delete_count || 0), 0);
-      hint.textContent = `清理预演：${items.length} 个仓库，预计删除 ${total} 个版本。`;
-      if (items.length) {
-        const top = items
-          .filter((x) => Number(x.delete_count || 0) > 0)
-          .sort((a, b) => Number(b.delete_count || 0) - Number(a.delete_count || 0))
-          .slice(0, 3)
-          .map((x) => `${x.repo}:${x.delete_count}`)
-          .join("，");
-        if (top) hint.textContent += ` 主要仓库：${top}`;
-      }
-      revealHintIfNeeded(hint);
-      toast("清理预演完成。", "ok");
-    } catch (e) {
-      hint.className = "hint danger";
-      hint.textContent = `清理预演失败：${formatError(e)}`;
-      revealHintIfNeeded(hint);
-      toast(`清理预演失败：${formatError(e)}`, "bad");
-    } finally {
-      setButtonBusy(btn, false);
-    }
-  });
-
-  $("syncCacheBtn").addEventListener("click", async () => {
-    const btn = $("syncCacheBtn");
-    const hint = $("syncCacheHint");
-    const prune = !!$("syncCachePruneToggle")?.checked;
-    setButtonBusy(btn, true, "同步中…");
-    hint.className = "hint";
-    hint.textContent = "";
-    try {
-      const data = await withAuth(() => API.post("/storage/sync-cache", { prune }));
-      const totals = data.totals || {};
-      const items = Array.isArray(data.items) ? data.items : [];
-      const anomalyRepos = items
-        .map((item) => ({
-          repo: String(item?.repo || "").trim(),
-          stale: Number(item?.stale_files || 0),
-          missing: Number(item?.missing_files || 0),
-        }))
-        .filter((x) => x.repo && (x.stale > 0 || x.missing > 0))
-        .map((x) => x.repo);
-      lastSyncCacheAnomalyRepoKeys = new Set(anomalyRepos);
-      hasSyncCacheSnapshot = true;
-      const pruned = Number(totals.pruned_files || 0);
-      const staleCount = Number(totals.stale_files || 0);
-      const missingCount = Number(totals.missing_files || 0);
-      const summary = `缓存同步${prune ? "（已执行清理）" : ""}：检查 ${totals.cache_files_checked || 0} 个文件，发现 stale ${
-        totals.stale_files || 0
-      } 个，缺失 ${totals.missing_files || 0} 个。`;
-      const topRepos = formatSyncCacheTopRepos(items, 3);
-      const hasAnomaly = staleCount > 0 || missingCount > 0;
-      hint.className = hasAnomaly ? "hint danger" : "hint";
-      if (!topRepos.length) {
-        hint.textContent = `${summary}${prune ? ` 已清理 ${pruned} 个。` : ""} 异常仓库：无。`;
-      } else {
-        const topLinks = topRepos
-          .map((x) => {
-            const href = `/repo.html?repo=${encodeURIComponent(x.repo)}`;
-            const label = `${x.repo}(stale${x.stale}/缺失${x.missing}${prune ? `/清理${x.pruned}` : ""})`;
-            return `<a href="${href}">${escapeHtml(label)}</a>`;
-          })
-          .join("；");
-        hint.innerHTML = `${escapeHtml(summary)}${prune ? ` 已清理 ${pruned} 个。` : ""} 重点仓库：${topLinks}。可在仓库状态筛选中选择“仅缓存异常”进行批量处理。`;
-      }
-      revealHintIfNeeded(hint);
-      if ($("repoStateFilterSelect")?.value === "cache_anomaly") renderRepos();
-      if (prune) {
-        // Keep toast lightweight; detailed cleanup context is shown in hint.
-        toast(`缓存同步完成，已清理 ${pruned} 个。`, "ok");
-      } else {
-        toast("缓存同步完成。", "ok");
-      }
-    } catch (e) {
-      hint.className = "hint danger";
-      hint.textContent = `缓存同步失败：${formatError(e)}`;
-      revealHintIfNeeded(hint);
-      toast(`缓存同步失败：${formatError(e)}`, "bad");
-    } finally {
-      setButtonBusy(btn, false);
-      updateBatchControlsUI();
-    }
-  });
-
-  $("saveSettingsBtn").addEventListener("click", async () => {
-    const ok = await saveSettings({ busyButtons: [$("saveSettingsBtn")] });
-    if (!ok) return;
-    settingsDialogSaved = true;
-    try {
-      $("settingsDialog").close();
-    } catch {}
-  });
-}
+const appEventsController = createAppEventsController({
+  getEl: $, api: API, runNow, openSettingsDialog, setButtonBusy, setUser, requireLogin, withAuth, loadAll, toast,
+  getCurrentUser: () => currentUser, formatError, saveSettings, setScheduler, setDirty: (value) => setDirty(value),
+  renderRepos, openRepoDialog, batchSelectVisible, batchInvertVisible, batchSelectEnabledVisible, batchSelectErrorVisible,
+  batchSelectCacheAnomalyVisible, batchRunSelected, batchSetEnabled, isCompactMobileViewport,
+  getBatchToolsExpanded: () => batchToolsExpanded, setBatchToolsExpanded: (value) => { batchToolsExpanded = !!value; },
+  syncBatchToolsPresentation, getSelectedRepoKeys, clearSelectedRepoKeys: () => { selectedRepoKeys.clear(); }, setBatchActionHint,
+  hasSettingsDialogUnsavedChanges, getSettingsDialogReturnFocusEl: () => settingsDialogReturnFocusEl,
+  setSettingsDialogReturnFocusEl: (value) => { settingsDialogReturnFocusEl = value; },
+  getSettingsDialogSaved: () => settingsDialogSaved, setSettingsDialogSaved: (value) => { settingsDialogSaved = !!value; },
+  getSettingsDialogDraftSnapshot: () => settingsDialogDraftSnapshot,
+  setSettingsDialogDraftSnapshot: (value) => { settingsDialogDraftSnapshot = value; },
+  getSettingsDialogDirtyBefore: () => settingsDialogDirtyBefore, getSettingsDialogAuthUsernameBefore: () => settingsDialogAuthUsernameBefore,
+  setSettingsDialogAuthUsernameBefore: (value) => { settingsDialogAuthUsernameBefore = String(value || ""); },
+  getDraft: () => draft, setDraft: (value) => { draft = value; }, getDirty: () => dirty, syncSettingsFormFromDraft,
+  focusIfPossible, syncDialogOpenState, getRepoDialogReturnFocusEl: () => repoDialogReturnFocusEl,
+  setRepoDialogReturnFocusEl: (value) => { repoDialogReturnFocusEl = value; }, invalidateWebdavTest, syncDraftFromSettingsForm,
+  recordWebdavTestResult, renderWebdavTestHint, refreshStorageDiagnostics, revealHintIfNeeded, formatSyncCacheTopRepos,
+  setLastSyncCacheAnomalyRepoKeys: (value) => { lastSyncCacheAnomalyRepoKeys = value instanceof Set ? value : new Set(); },
+  setHasSyncCacheSnapshot: (value) => { hasSyncCacheSnapshot = !!value; }, updateBatchControlsUI, escapeHtml,
+});
 
 async function main() {
-  wireEvents();
+  appEventsController.wireEvents();
   batchToolsExpanded = !isCompactMobileViewport();
   syncBatchToolsPresentation(0);
   setupMobileSectionNav();

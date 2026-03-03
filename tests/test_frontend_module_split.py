@@ -18,6 +18,8 @@ class FrontendModuleSplitTests(unittest.TestCase):
         mobile_behavior_pos = html.find('src="/mobile-behavior.js"')
         app_ui_utils_pos = html.find('src="/app-ui-utils.js"')
         app_auth_pos = html.find('src="/app-auth.js"')
+        app_settings_dialog_pos = html.find('src="/app-settings-dialog.js"')
+        app_events_pos = html.find('src="/app-events.js"')
         app_runtime_pos = html.find('src="/app-runtime.js"')
         app_pos = html.find('src="/app.js"')
         self.assertGreaterEqual(api_pos, 0)
@@ -31,6 +33,8 @@ class FrontendModuleSplitTests(unittest.TestCase):
         self.assertGreaterEqual(mobile_behavior_pos, 0)
         self.assertGreaterEqual(app_ui_utils_pos, 0)
         self.assertGreaterEqual(app_auth_pos, 0)
+        self.assertGreaterEqual(app_settings_dialog_pos, 0)
+        self.assertGreaterEqual(app_events_pos, 0)
         self.assertGreaterEqual(app_runtime_pos, 0)
         self.assertGreaterEqual(app_pos, 0)
         self.assertLess(api_pos, app_pos)
@@ -44,8 +48,12 @@ class FrontendModuleSplitTests(unittest.TestCase):
         self.assertLess(mobile_behavior_pos, app_pos)
         self.assertLess(app_ui_utils_pos, app_pos)
         self.assertLess(app_auth_pos, app_pos)
+        self.assertLess(app_settings_dialog_pos, app_pos)
+        self.assertLess(app_events_pos, app_pos)
         self.assertLess(app_ui_utils_pos, app_runtime_pos)
         self.assertLess(app_auth_pos, app_runtime_pos)
+        self.assertLess(app_settings_dialog_pos, app_runtime_pos)
+        self.assertLess(app_events_pos, app_runtime_pos)
         self.assertLess(app_runtime_pos, app_pos)
 
     def test_app_bootstrap_uses_shared_global_modules(self) -> None:
@@ -67,10 +75,15 @@ class FrontendModuleSplitTests(unittest.TestCase):
         runtime_js = Path("github_release_watcher/static/app-runtime.js").read_text(encoding="utf-8")
         self.assertIn("window.GRWAppUiUtils", runtime_js)
         self.assertIn("window.GRWAppAuth", runtime_js)
+        self.assertIn("window.GRWAppSettingsDialog", runtime_js)
+        self.assertIn("window.GRWAppEvents", runtime_js)
         self.assertNotIn("function startLoginFlow(", runtime_js)
         self.assertNotIn("async function requireLogin(", runtime_js)
         self.assertNotIn("function toast(", runtime_js)
         self.assertNotIn("function setButtonBusy(", runtime_js)
+        self.assertNotIn("function wireEvents(", runtime_js)
+        self.assertNotIn("function syncSettingsFormFromDraft(", runtime_js)
+        self.assertNotIn("function syncDraftFromSettingsForm(", runtime_js)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ FILES = [
     "app-runtime.js",
     "app-ui-utils.js",
     "app-auth.js",
+    "app-settings-dialog.js",
+    "app-events.js",
     "styles.css",
     "repo.js",
     "repo.html",
