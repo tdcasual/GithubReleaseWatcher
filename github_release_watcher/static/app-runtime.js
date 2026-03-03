@@ -11,6 +11,8 @@ const createStorageDiagnosticsController = window.GRWStorageDiagnostics?.createS
 const createBatchSelectorsController = window.GRWBatchSelectors?.createBatchSelectorsController;
 const createBatchActionsController = window.GRWBatchActions?.createBatchActionsController;
 const createMobileBehaviorController = window.GRWMobileBehavior?.createMobileBehaviorController;
+const createAppUiUtils = window.GRWAppUiUtils?.createAppUiUtils;
+const createAuthController = window.GRWAppAuth?.createAuthController;
 
 if (
   !API ||
@@ -25,7 +27,9 @@ if (
   !createStorageDiagnosticsController ||
   !createBatchSelectorsController ||
   !createBatchActionsController ||
-  !createMobileBehaviorController
+  !createMobileBehaviorController ||
+  !createAppUiUtils ||
+  !createAuthController
 ) {
   throw new Error("Shared frontend modules not loaded");
 }
@@ -45,8 +49,6 @@ let config = null;
 let draft = null;
 let dirty = false;
 let currentUser = null;
-let loginPromise = null;
-let toastTimer = null;
 let repoSummaryByKey = new Map();
 let settingsDialogDraftSnapshot = null;
 let settingsDialogDirtyBefore = false;
@@ -64,6 +66,19 @@ let hasSyncCacheSnapshot = false;
 let batchToolsExpanded = true;
 
 const $ = (id) => document.getElementById(id);
+const uiUtils = createAppUiUtils({ getEl: $ });
+const getFocusableTriggerEl = () => uiUtils.getFocusableTriggerEl();
+const focusIfPossible = (el) => uiUtils.focusIfPossible(el);
+const syncDialogOpenState = () => uiUtils.syncDialogOpenState();
+const prefersReducedMotion = () => uiUtils.prefersReducedMotion();
+const isMobileLikeViewport = () => uiUtils.isMobileLikeViewport();
+const revealHintIfNeeded = (el) => uiUtils.revealHintIfNeeded(el);
+const isBusy = (el) => uiUtils.isBusy(el);
+const toast = (message, kind) => uiUtils.toast(message, kind);
+const setButtonBusy = (btn, busy, busyText) => uiUtils.setButtonBusy(btn, busy, busyText);
+const cloneDeep = (obj) => uiUtils.cloneDeep(obj);
+const stableCopy = (value) => uiUtils.stableCopy(value);
+const stableStringify = (value) => uiUtils.stableStringify(value);
 
 const repoController = createRepoController({
   getConfig: () => config,
@@ -154,98 +169,14 @@ const mobileBehaviorController = createMobileBehaviorController({
   prefersReducedMotion: () => prefersReducedMotion(),
 });
 
-function getFocusableTriggerEl() {
-  const active = document.activeElement;
-  if (!(active instanceof HTMLElement)) return null;
-  if (!active.isConnected) return null;
-  return active;
-}
-
-function focusIfPossible(el) {
-  if (!(el instanceof HTMLElement)) return false;
-  if (!el.isConnected) return false;
-  if (el.matches(":disabled")) return false;
-  try {
-    el.focus();
-    return document.activeElement === el;
-  } catch {
-    return false;
-  }
-}
-
-function syncDialogOpenState() {
-  const hasOpenDialog = !!document.querySelector("dialog[open]");
-  document.body.classList.toggle("dialog-open", hasOpenDialog);
-}
-
-function prefersReducedMotion() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
-function isMobileLikeViewport() {
-  return window.matchMedia("(max-width: 640px)").matches || window.matchMedia("(pointer: coarse)").matches;
-}
-
-function revealHintIfNeeded(el) {
-  if (!(el instanceof HTMLElement)) return;
-  if (!isMobileLikeViewport()) return;
-  if (!String(el.textContent || "").trim()) return;
-  const rect = el.getBoundingClientRect();
-  const vh = window.innerHeight || document.documentElement.clientHeight || 0;
-  if (!vh) return;
-  const safeTop = 88;
-  const safeBottom = 110;
-  const outOfView = rect.top < safeTop || rect.bottom > vh - safeBottom;
-  if (!outOfView) return;
-  try {
-    el.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
-  } catch {}
-}
-
 const setupMobileSectionNav = () => mobileBehaviorController.setupMobileSectionNav();
 
 const setupLogsScrollHint = () => mobileBehaviorController.setupLogsScrollHint();
-
-function isBusy(el) {
-  return el?.getAttribute("aria-busy") === "true";
-}
 
 function setDirty(v) {
   dirty = v;
   const saveBtn = $("saveBtn");
   saveBtn.disabled = isBusy(saveBtn) || !dirty || !config;
-}
-
-function toast(message, kind) {
-  const el = $("toast");
-  if (!el) return;
-  if (!message) {
-    el.classList.add("hidden");
-    return;
-  }
-  el.textContent = message;
-  el.className = `toast ${kind ?? ""}`.trim();
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    el.classList.add("hidden");
-  }, 2400);
-}
-
-function setButtonBusy(btn, busy, busyText) {
-  if (!btn) return;
-  if (busy) {
-    btn.dataset.prevDisabled = String(btn.disabled);
-    btn.dataset.prevText = btn.textContent || "";
-    btn.disabled = true;
-    btn.setAttribute("aria-busy", "true");
-    if (busyText) btn.textContent = busyText;
-  } else {
-    btn.disabled = btn.dataset.prevDisabled === "true";
-    btn.removeAttribute("aria-busy");
-    if (btn.dataset.prevText != null) btn.textContent = btn.dataset.prevText;
-    delete btn.dataset.prevDisabled;
-    delete btn.dataset.prevText;
-  }
 }
 
 async function withAuth(fn) {
@@ -355,23 +286,20 @@ function setUser(username) {
   logoutBtn.disabled = isBusy(logoutBtn) || !currentUser;
 }
 
-function cloneDeep(obj) {
-  return JSON.parse(JSON.stringify(obj));
-}
+const authController = createAuthController({
+  getEl: $,
+  apiGetMe: () => API.get("/me"),
+  syncDialogOpenState: () => syncDialogOpenState(),
+  onAuthResolved: ({ username, mustChangePassword: nextMustChangePassword }) => {
+    mustChangePassword = !!nextMustChangePassword;
+    renderSecurityBanner();
+    setUser(username || "admin");
+  },
+});
 
-function stableCopy(value) {
-  if (Array.isArray(value)) return value.map(stableCopy);
-  if (!value || typeof value !== "object") return value;
-  const out = {};
-  for (const key of Object.keys(value).sort()) {
-    out[key] = stableCopy(value[key]);
-  }
-  return out;
-}
+const startLoginFlow = (message) => authController.startLoginFlow(message);
 
-function stableStringify(value) {
-  return JSON.stringify(stableCopy(value));
-}
+const requireLogin = () => authController.requireLogin();
 
 function hasSettingsDialogUnsavedChanges() {
   if (!settingsDialogDraftSnapshot || !draft) return false;
@@ -1598,82 +1526,6 @@ function wireEvents() {
       $("settingsDialog").close();
     } catch {}
   });
-}
-
-function startLoginFlow(message) {
-  if (loginPromise) return loginPromise;
-  loginPromise = new Promise((resolve) => {
-    const dlg = $("loginDialog");
-    $("loginError").textContent = message || "";
-    $("loginUsername").value = "";
-    $("loginPassword").value = "";
-    dlg.showModal();
-    syncDialogOpenState();
-    setTimeout(() => $("loginUsername").focus(), 0);
-    dlg.addEventListener(
-      "cancel",
-      (e) => {
-        e.preventDefault();
-      },
-      { once: true }
-    );
-
-    const onDone = (username) => {
-      setUser(username);
-      try {
-        dlg.close();
-      } catch {}
-      $("loginForm").onsubmit = null;
-      loginPromise = null;
-      resolve();
-    };
-
-    $("loginForm").onsubmit = async (e) => {
-      e.preventDefault();
-      const username = ($("loginUsername").value || "").trim();
-      const password = $("loginPassword").value || "";
-      if (!username || !password) {
-        $("loginError").textContent = "请输入账号与密码。";
-        return;
-      }
-      try {
-        const resp = await fetch("/api/v1/login", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ username, password }),
-        });
-        const res = await resp.json().catch(() => ({}));
-        if (!resp.ok || res.error) {
-          if (res.error === "rate_limited" || resp.status === 429) {
-            $("loginError").textContent = "登录过于频繁，请稍后再试。";
-          } else {
-            $("loginError").textContent = "账号或密码错误。";
-          }
-          return;
-        }
-        mustChangePassword = !!res.user?.must_change_password;
-        renderSecurityBanner();
-        onDone(res.user?.username || username);
-      } catch (err) {
-        $("loginError").textContent = String(err?.message || err);
-      }
-    };
-  });
-  return loginPromise;
-}
-
-async function requireLogin() {
-  try {
-    const me = await API.get("/me");
-    mustChangePassword = !!me.user?.must_change_password;
-    renderSecurityBanner();
-    setUser(me.user?.username || "admin");
-    return;
-  } catch (e) {
-    if (e?.code !== "unauthorized") throw e;
-  }
-  await startLoginFlow();
 }
 
 async function main() {

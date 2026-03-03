@@ -8,6 +8,8 @@ FILES = [
     "index.html",
     "app.js",
     "app-runtime.js",
+    "app-ui-utils.js",
+    "app-auth.js",
     "styles.css",
     "repo.js",
     "repo.html",

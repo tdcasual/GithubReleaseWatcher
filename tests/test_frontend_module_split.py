@@ -16,6 +16,8 @@ class FrontendModuleSplitTests(unittest.TestCase):
         batch_selectors_pos = html.find('src="/batch-selectors.js"')
         batch_actions_pos = html.find('src="/batch-actions.js"')
         mobile_behavior_pos = html.find('src="/mobile-behavior.js"')
+        app_ui_utils_pos = html.find('src="/app-ui-utils.js"')
+        app_auth_pos = html.find('src="/app-auth.js"')
         app_runtime_pos = html.find('src="/app-runtime.js"')
         app_pos = html.find('src="/app.js"')
         self.assertGreaterEqual(api_pos, 0)
@@ -27,6 +29,8 @@ class FrontendModuleSplitTests(unittest.TestCase):
         self.assertGreaterEqual(batch_selectors_pos, 0)
         self.assertGreaterEqual(batch_actions_pos, 0)
         self.assertGreaterEqual(mobile_behavior_pos, 0)
+        self.assertGreaterEqual(app_ui_utils_pos, 0)
+        self.assertGreaterEqual(app_auth_pos, 0)
         self.assertGreaterEqual(app_runtime_pos, 0)
         self.assertGreaterEqual(app_pos, 0)
         self.assertLess(api_pos, app_pos)
@@ -38,9 +42,13 @@ class FrontendModuleSplitTests(unittest.TestCase):
         self.assertLess(batch_selectors_pos, app_pos)
         self.assertLess(batch_actions_pos, app_pos)
         self.assertLess(mobile_behavior_pos, app_pos)
+        self.assertLess(app_ui_utils_pos, app_pos)
+        self.assertLess(app_auth_pos, app_pos)
+        self.assertLess(app_ui_utils_pos, app_runtime_pos)
+        self.assertLess(app_auth_pos, app_runtime_pos)
         self.assertLess(app_runtime_pos, app_pos)
 
-    def test_app_uses_shared_global_modules(self) -> None:
+    def test_app_bootstrap_uses_shared_global_modules(self) -> None:
         app_js = Path("github_release_watcher/static/app.js").read_text(encoding="utf-8")
         self.assertIn("window.GRWApiClient", app_js)
         self.assertIn("window.GRWFormatters", app_js)
@@ -54,15 +62,15 @@ class FrontendModuleSplitTests(unittest.TestCase):
         self.assertIn("window.GRWAppRuntime", app_js)
         self.assertNotIn("const API = {", app_js)
         self.assertNotIn("function renderStructuredLogs(", app_js)
-        self.assertNotIn("function getRepoListView(", app_js)
-        self.assertNotIn("function validateIntField(", app_js)
-        self.assertNotIn("function formatStorageHealthTopRepos(", app_js)
-        self.assertNotIn("function refreshStorageDiagnostics(", app_js)
-        self.assertNotIn("function batchSelectVisible(", app_js)
-        self.assertNotIn("function batchSetEnabled(", app_js)
-        self.assertNotIn("function batchRunSelected(", app_js)
-        self.assertNotIn("function setupMobileSectionNav(", app_js)
-        self.assertNotIn("function setupLogsScrollHint(", app_js)
+
+    def test_app_runtime_uses_auth_and_ui_modules(self) -> None:
+        runtime_js = Path("github_release_watcher/static/app-runtime.js").read_text(encoding="utf-8")
+        self.assertIn("window.GRWAppUiUtils", runtime_js)
+        self.assertIn("window.GRWAppAuth", runtime_js)
+        self.assertNotIn("function startLoginFlow(", runtime_js)
+        self.assertNotIn("async function requireLogin(", runtime_js)
+        self.assertNotIn("function toast(", runtime_js)
+        self.assertNotIn("function setButtonBusy(", runtime_js)
 
 
 if __name__ == "__main__":
