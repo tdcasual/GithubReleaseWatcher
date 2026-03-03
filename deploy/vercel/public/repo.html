@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0f0f10" media="(prefers-color-scheme: dark)" />
@@ -28,18 +28,23 @@
       </header>
 
       <main class="grid">
-        <section class="card card-status">
+        <section id="securityBanner" class="security-banner hidden" role="status" aria-live="polite"></section>
+
+        <section id="summarySection" class="card card-status">
           <div class="card-head">
             <div>
               <h2>概览</h2>
               <p class="muted">当前版本、检查计划、下载/清理统计。</p>
             </div>
             <div class="card-actions">
+              <button class="btn section-toggle" type="button" data-target="summaryBody">折叠</button>
               <button id="copySummaryBtn" class="btn" type="button">复制摘要</button>
+              <button id="copyDiagBtn" class="btn" type="button">复制诊断包</button>
             </div>
           </div>
 
-          <div class="kv">
+          <div id="summaryBody" class="section-body">
+            <div class="kv">
             <div class="kv-item">
               <div class="kv-k">当前版本</div>
               <div id="currentTag" class="kv-v">-</div>
@@ -85,37 +90,67 @@
               <div class="kv-k">下载失败次数</div>
               <div id="downloadErrorsTotal" class="kv-v">0</div>
             </div>
+            <div class="kv-item">
+              <div class="kv-k">上传重试次数</div>
+              <div id="uploadRetryTotal" class="kv-v">0</div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-k">上传校验失败</div>
+              <div id="uploadVerifyFailedTotal" class="kv-v">0</div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-k">上传队列深度</div>
+              <div id="uploadQueueDepth" class="kv-v">0</div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-k">检查成功率</div>
+              <div id="checksSuccessRatio" class="kv-v">-</div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-k">下载成功率</div>
+              <div id="downloadSuccessRatio" class="kv-v">-</div>
+            </div>
           </div>
-
-          <p id="updateHint" class="hint"></p>
-          <p id="errorHint" class="hint danger"></p>
+            <p id="updateHint" class="hint" role="status" aria-live="polite"></p>
+            <p id="uploadHealthHint" class="hint" role="status" aria-live="polite"></p>
+            <p id="runFeedbackHint" class="hint" role="status" aria-live="polite"></p>
+            <p id="errorHint" class="hint danger" role="alert" aria-live="assertive"></p>
+          </div>
         </section>
 
-        <section class="card card-releases">
+        <section id="releasesSection" class="card card-releases">
           <div class="card-head">
             <div>
               <h2>版本</h2>
               <p class="muted">已保存的 Release 版本（来自 state.json）。</p>
             </div>
             <div class="card-actions">
+              <button class="btn section-toggle" type="button" data-target="releasesBody">折叠</button>
               <button id="copyReleasesBtn" class="btn" type="button">复制版本列表</button>
             </div>
           </div>
-          <p id="releaseStatsHint" class="hint"></p>
-          <pre id="releases" class="logs">加载中…</pre>
+          <div id="releasesBody" class="section-body">
+            <p id="releaseStatsHint" class="hint" role="status" aria-live="polite"></p>
+            <pre id="releases" class="logs">加载中…</pre>
+            <p class="hint logs-scroll-hint">提示：该区域可上下滑动查看更多内容。</p>
+          </div>
         </section>
 
-        <section class="card card-logs">
+        <section id="activitySection" class="card card-logs">
           <div class="card-head">
             <div>
               <h2>活动</h2>
               <p class="muted">下载/清理/检查事件（每仓库独立记录）。</p>
             </div>
             <div class="card-actions">
+              <button class="btn section-toggle" type="button" data-target="activityBody">折叠</button>
               <button id="copyActivityBtn" class="btn" type="button">复制活动</button>
             </div>
           </div>
-          <pre id="activity" class="logs">加载中…</pre>
+          <div id="activityBody" class="section-body">
+            <pre id="activity" class="logs">加载中…</pre>
+            <p class="hint logs-scroll-hint">提示：该区域可上下滑动查看更多内容。</p>
+          </div>
         </section>
       </main>
 
@@ -135,7 +170,7 @@
           </div>
         </div>
 
-        <p id="loginError" class="hint danger"></p>
+        <p id="loginError" class="hint danger" role="alert" aria-live="assertive"></p>
 
         <label class="label" for="loginUsername">账号</label>
         <input id="loginUsername" class="input" autocomplete="username" />
@@ -148,5 +183,11 @@
         </menu>
       </form>
     </dialog>
+
+    <nav class="mobile-nav" aria-label="快速导航">
+      <a id="navSummaryLink" class="mobile-nav-item" href="#summarySection">概览</a>
+      <a id="navReleasesLink" class="mobile-nav-item" href="#releasesSection">版本</a>
+      <a id="navActivityLink" class="mobile-nav-item" href="#activitySection">活动</a>
+    </nav>
   </body>
 </html>

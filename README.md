@@ -131,6 +131,12 @@ docker run --rm -p 8000:8000 -v "$PWD/data:/data" -e GITHUB_TOKEN="$GITHUB_TOKEN
 
 本仓库已提供 `deploy/vercel`（静态 UI + `/api/v1/*` 代理函数）：
 
+0) 先同步前端静态文件（确保 `deploy/vercel/public` 与内置 UI 一致）：
+
+```bash
+bash scripts/release/sync_vercel_public.sh
+```
+
 1) 在 Vercel 导入仓库，Root Directory 选择 `deploy/vercel`
 2) 配置环境变量：`UPSTREAM=https://your-backend.example.com`（不要以 `/` 结尾）
 3) 部署后直接访问 Vercel 域名即可
