@@ -20,16 +20,23 @@ def _pbkdf2_hash(password: str, *, salt_hex: str, iterations: int) -> str:
     return dk.hex()
 
 
+def _generate_bootstrap_password() -> str:
+    # 24 chars urlsafe token gives good entropy while remaining shell/UI friendly.
+    return secrets.token_urlsafe(18)
+
+
 def _default_auth_config() -> dict[str, Any]:
-    # Default credentials: admin/admin
+    bootstrap_password = _generate_bootstrap_password()
     salt_hex = secrets.token_bytes(16).hex()
     iterations = 200_000
     return {
         "username": "admin",
         "salt": salt_hex,
         "iterations": iterations,
-        "password_hash": _pbkdf2_hash("admin", salt_hex=salt_hex, iterations=iterations),
+        "password_hash": _pbkdf2_hash(bootstrap_password, salt_hex=salt_hex, iterations=iterations),
         "must_change_password": True,
+        "bootstrap_generated": True,
+        "bootstrap_password": bootstrap_password,
     }
 
 
@@ -54,7 +61,7 @@ def _load_auth_config(overrides: dict[str, Any]) -> dict[str, Any]:
         "salt": salt,
         "iterations": int(iterations),
         "password_hash": password_hash,
-        "must_change_password": False,
+        "must_change_password": bool(auth.get("must_change_password", False)),
     }
 
 

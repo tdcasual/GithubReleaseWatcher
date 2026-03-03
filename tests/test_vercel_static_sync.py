@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 FILES = [
+    "bootstrap-contract.js",
     "api-client.js",
     "formatters.js",
     "logs-view.js",

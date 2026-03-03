@@ -1154,7 +1154,7 @@ async function main() {
   await loadAll();
   await refreshLogs();
   if (mustChangePassword) {
-    toast("请先在设置中修改默认账号密码。", "warn");
+    toast("请先在设置中修改初始化账号密码。", "warn");
   }
 
   const pollStatus = () => {

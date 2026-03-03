@@ -6,6 +6,7 @@ SRC="$ROOT/github_release_watcher/static"
 DST="$ROOT/deploy/vercel/public"
 
 for f in \
+  bootstrap-contract.js \
   api-client.js \
   formatters.js \
   logs-view.js \

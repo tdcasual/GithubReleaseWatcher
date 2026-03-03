@@ -54,8 +54,20 @@
   "metrics": {
     "api_last_latency_ms": "float",
     "api_request_total": "int",
+    "queue_deduplicated_total": "int",
     "queue_enqueue_total": "int",
+    "queue_pending_buckets": {
+      "0": "int",
+      "1": "int",
+      "2_3": "int",
+      "4_plus": "int"
+    },
+    "queue_pending_current": "int",
+    "queue_pending_peak": "int",
     "queue_rejected_total": "int",
+    "recent_failure_types": {},
+    "run_duration_p50_ms": "float",
+    "run_duration_p95_ms": "float",
     "scheduler_lag_seconds": "float"
   },
   "overrides_path": "str",
