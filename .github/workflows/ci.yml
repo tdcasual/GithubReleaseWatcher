@@ -27,9 +27,18 @@ jobs:
       - name: Run stable Python test suite
         run: python -m pytest -q -k "not download_integration"
 
+      - name: Block tracked local artifacts
+        run: |
+          forbidden='^\.playwright-cli/|^config\.toml$|^real_state 2\.json$'
+          tracked="$(git ls-files | grep -E "$forbidden" || true)"
+          if [ -n "$tracked" ]; then
+            echo "Forbidden tracked local artifacts found:"
+            echo "$tracked"
+            exit 1
+          fi
+
       - name: Validate frontend scripts
         run: |
-          node --check github_release_watcher/static/app.js
-          node --check github_release_watcher/static/repo.js
-          node --check deploy/vercel/public/app.js
-          node --check deploy/vercel/public/repo.js
+          for action in github_release_watcher/static/*.js deploy/vercel/public/*.js; do
+            node --check "$action"
+          done

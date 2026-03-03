@@ -10,12 +10,15 @@ downloads/
 data/
 state.json
 config.override.json
+.playwright-cli/
 .tools/
 .worktrees/
 
 # Example local config outputs
+config.toml
 real_downloads/
 real_state.json
+real_state 2.json
 test_state.json
 
 test_downloads/

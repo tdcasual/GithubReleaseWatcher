@@ -1,3 +1,9 @@
+const bootstrap = window.GRWBootstrapContract;
+if (!bootstrap || typeof bootstrap.requireModules !== "function") {
+  throw new Error("Bootstrap contract not loaded");
+}
+bootstrap.requireModules(["GRWApiClient", "GRWFormatters", "GRWAppUiUtils", "GRWAppAuth", "GRWMobileBehavior"], "repo");
+
 const API = window.GRWApiClient?.API;
 const isoToLocal = window.GRWFormatters?.isoToLocal;
 const createAppUiUtils = window.GRWAppUiUtils?.createAppUiUtils;

@@ -24,7 +24,7 @@ class AcceptanceGateSyncTests(unittest.TestCase):
                 - [x] Gate 1: No open `P1/P2` defects.
                 - [ ] Gate 2: Core user flows pass on desktop and mobile.
                 - [ ] Gate 3: WebDAV critical flow passes end-to-end.
-                - [x] Gate 4: Required automated regression commands pass.
+                - [ ] Gate 4: Required automated regression commands pass.
                 """
             ),
             encoding="utf-8",
@@ -39,6 +39,7 @@ class AcceptanceGateSyncTests(unittest.TestCase):
     def test_sync_marks_gate2_and_gate3_checked_when_reports_pass(self) -> None:
         self._write_report("gate2-report.md", "- [x] Gate 2 pass\n- [ ] Gate 2 blocked\n")
         self._write_report("gate3-report.md", "- [x] Gate 3 pass\n- [ ] Gate 3 blocked\n")
+        self._write_report("gate4-report.md", "- [x] Gate 4 pass\n- [ ] Gate 4 blocked\n")
 
         subprocess.run(
             [str(SCRIPT), str(self.run_dir), "--checklist", str(self.checklist)],
@@ -49,10 +50,12 @@ class AcceptanceGateSyncTests(unittest.TestCase):
         content = self.checklist.read_text(encoding="utf-8")
         self.assertIn("- [x] Gate 2: Core user flows pass on desktop and mobile.", content)
         self.assertIn("- [x] Gate 3: WebDAV critical flow passes end-to-end.", content)
+        self.assertIn("- [x] Gate 4: Required automated regression commands pass.", content)
 
     def test_sync_marks_unchecked_when_report_not_pass(self) -> None:
         self._write_report("gate2-report.md", "- [ ] Gate 2 pass\n- [x] Gate 2 blocked\n")
         self._write_report("gate3-report.md", "- [ ] Gate 3 pass\n- [ ] Gate 3 blocked\n")
+        self._write_report("gate4-report.md", "- [ ] Gate 4 pass\n- [x] Gate 4 blocked\n")
 
         subprocess.run(
             [str(SCRIPT), str(self.run_dir), "--checklist", str(self.checklist)],
@@ -63,10 +66,12 @@ class AcceptanceGateSyncTests(unittest.TestCase):
         content = self.checklist.read_text(encoding="utf-8")
         self.assertIn("- [ ] Gate 2: Core user flows pass on desktop and mobile.", content)
         self.assertIn("- [ ] Gate 3: WebDAV critical flow passes end-to-end.", content)
+        self.assertIn("- [ ] Gate 4: Required automated regression commands pass.", content)
 
     def test_dry_run_does_not_modify_file(self) -> None:
         self._write_report("gate2-report.md", "- [x] Gate 2 pass\n- [ ] Gate 2 blocked\n")
         self._write_report("gate3-report.md", "- [x] Gate 3 pass\n- [ ] Gate 3 blocked\n")
+        self._write_report("gate4-report.md", "- [x] Gate 4 pass\n- [ ] Gate 4 blocked\n")
         before = self.checklist.read_text(encoding="utf-8")
 
         subprocess.run(

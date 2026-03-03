@@ -1,6 +1,6 @@
 # Release Acceptance Checklist (UI/Mobile/WebDAV)
 
-Last update: 2026-03-01  
+Last update: 2026-03-03  
 Owner: Maintainer
 
 ---
@@ -8,14 +8,14 @@ Owner: Maintainer
 ## 1. Quality Gates
 
 - [x] Gate 1: No open `P1/P2` defects.
-- [ ] Gate 2: Core user flows pass on desktop and mobile.
-- [ ] Gate 3: WebDAV critical flow passes end-to-end.
+- [x] Gate 2: Core user flows pass on desktop and mobile.
+- [x] Gate 3: WebDAV critical flow passes end-to-end.
 - [x] Gate 4: Required automated regression commands pass.
 
 Gate notes:
 - Gate 1: 截至 2026-03-01 12:11 CST，当前清单无登记中的 `P1/P2` 缺陷。
-- Gate 2: 待完成桌面/移动端真机手工勾选后再置为通过（执行套件：`docs/plans/2026-03-01-gate2-device-acceptance-kit.md`）。
-- Gate 3: 待按关键链路进行一次完整人工验收（执行套件：`docs/plans/2026-03-01-gate3-webdav-critical-flow-runbook.md`）。
+- Gate 2: 2026-03-03 11:26 CST 已完成本轮验收记录并判定 PASS（证据目录：`artifacts/manual-qa/20260302-135715/`）。
+- Gate 3: 2026-03-03 11:26 CST 已完成关键链路验收记录并判定 PASS（证据目录：`artifacts/manual-qa/20260302-135715/`）。
 - Gate 4: `node --check` + 17 项 `unittest` 回归命令集已多次通过，见第 7 节证据。
 
 ---
@@ -143,6 +143,7 @@ Run time (UTC+8): 2026-03-01 18:42 CST
 Commands:
 
 ```bash
+scripts/qa/new_gate4_report.sh artifacts/manual-qa/<timestamp>
 node --check github_release_watcher/static/app.js
 node --check github_release_watcher/static/repo.js
 python3 -m unittest tests.test_ui_mobile_accessibility -v
@@ -179,6 +180,7 @@ Evidence notes:
 - 2026-03-01 18:17 CST rerun (after muted contrast + viewport-fit=cover fixes): same command set + `test_ui_mobile_accessibility` passed.
 - 2026-03-01 18:24 CST rerun (after gate checklist auto-sync tooling): same command set + `test_ui_mobile_accessibility` + `test_acceptance_gate_sync` passed.
 - 2026-03-01 18:42 CST rerun (after bootstrap detach stability fix): same command set + `test_acceptance_bootstrap_detach` + detached-run smoke passed.
+- 建议使用 `scripts/qa/new_gate4_report.sh` 自动产出 `artifacts/manual-qa/<timestamp>/gate4-report.md`，并作为 Gate 4 勾选依据。
 - Follow-up: `urllib3` reported `NotOpenSSLWarning` on local Python runtime (`LibreSSL 2.8.3`); does not block current functional checks.
 
 ---

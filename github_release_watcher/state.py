@@ -5,7 +5,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-STATE_VERSION = 1
+from .state_migrations import LATEST_STATE_VERSION, migrate_state
+
+STATE_VERSION = LATEST_STATE_VERSION
 DEFAULT_ACTIVITY_CAPACITY = 500
 
 
@@ -43,7 +45,10 @@ def load_state(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         return _empty_state()
     if data.get("version") != STATE_VERSION:
-        return _empty_state()
+        try:
+            data = migrate_state(data, now_iso=_now_iso)
+        except Exception:
+            return _empty_state()
     if "repos" not in data or not isinstance(data["repos"], dict):
         data["repos"] = {}
     return data

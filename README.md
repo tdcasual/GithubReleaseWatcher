@@ -46,6 +46,12 @@ python3 watcher.py --config config.toml
 
 > 说明：CLI 常驻模式为「全仓库一起跑」的固定间隔轮询；若希望按仓库自适应调度与活动页，请使用下面的 Web 模式。
 
+## 仓库卫生约定（必读）
+
+- `config.toml`、`config.override.json`、`state.json`、`downloads/` 属于本地运行态文件，不应提交到仓库。
+- `.playwright-cli/` 仅用于本地 UI 调试产物，禁止纳入版本控制。
+- 如需示例配置，请使用 `config.example.toml`，不要提交个人环境配置。
+
 ## Web 模式（API + 可选前端）
 
 启动内置 Web 服务（默认带前端 UI）：
@@ -64,10 +70,10 @@ python3 watcher.py --config config.toml --web --no-ui
 
 主要 API：
 
-- `POST /api/v1/login`：登录（默认 `admin/admin`，成功后设置 Cookie 会话）
+- `POST /api/v1/login`：登录（首次启动生成初始化口令并写入日志，成功后设置 Cookie 会话）
 - `POST /api/v1/logout`：退出登录
 - `GET /api/v1/status`：运行状态、最近一次执行结果、当前配置（脱敏）
-- `POST /api/v1/run`：触发一次检查/下载（可传 `{"repo":"owner/repo"}` 执行单仓库，或 `{"repos":["owner/repo","foo/bar"]}` 批量执行）
+- `POST /api/v1/run`：触发一次检查/下载（可传 `{"repo":"owner/repo"}` 执行单仓库，或 `{"repos":["owner/repo","foo/bar"]}` 批量执行）；响应包含兼容字段 `queued`，以及更细粒度 `queue_status`（`accepted` / `deduplicated` / `rejected_overflow`）
 - `PUT /api/v1/settings`：更新运行配置（写入 `config.override.json`）
 - `PUT /api/v1/scheduler`：开启/关闭自动轮询
 - `GET /api/v1/repos`：仓库列表（包含统计、下次检查时间、推荐间隔）
@@ -152,7 +158,7 @@ bash scripts/release/sync_vercel_public.sh
 
 ### 安全建议（强烈建议）
 
-- 首次登录后必须修改默认账号密码（默认 `admin/admin`，系统会限制敏感操作直到完成改密）
+- 首次启动会生成初始化口令（写入服务日志）；首次登录后必须在设置中改密，系统会限制敏感操作直到完成改密
 - 暴露到公网建议再加一层访问控制（Cloudflare Zero Trust / BasicAuth / IP 白名单 / 反向代理鉴权等）
 - 登录失败会触发限流（短时多次失败会返回 429）
 
@@ -186,9 +192,11 @@ node --check deploy/vercel/public/repo.js
   - `scripts/qa/manual_acceptance_stop.sh`
   - `scripts/qa/new_gate2_report.sh`
   - `scripts/qa/new_gate3_report.sh`
-  - `scripts/qa/new_acceptance_packet.sh`（一键生成 Gate 2 + Gate 3 报告与总览导航）
+  - `scripts/qa/new_gate4_report.sh`（自动执行 Gate4 回归并生成 `gate4-report.md`）
+  - `scripts/qa/new_acceptance_packet.sh`（一键生成 Gate 2 + Gate 3 + Gate 4 报告与总览导航）
   - `scripts/qa/sync_acceptance_gates.sh`（根据 Gate2/Gate3 报告自动同步发布清单勾选状态，支持 `--dry-run`）
-  - `scripts/qa/check_acceptance_status.sh`（汇总清单与 Gate 报告状态，快速判断是否可发布）
+  - `scripts/qa/check_acceptance_status.sh`（汇总清单与 Gate 报告状态，快速判断是否可发布；支持 `--checklist`）
+  - `scripts/qa/smoke_api_flow.sh`（最小 API 行为冒烟：`login -> state -> run -> repos`）
   - 说明：`manual_acceptance_bootstrap.sh` 已改为 detached 启动（`nohup`），在自动化 shell 下更稳定。
 
 ## 2026-03-01 收尾更新摘要

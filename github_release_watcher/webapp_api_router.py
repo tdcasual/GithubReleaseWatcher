@@ -262,7 +262,7 @@ def handle_api_request(request_handler, path: str, split) -> None:
             request_handler._send_json({"error": "repos must be a list"}, status=HTTPStatus.BAD_REQUEST)
             return
         try:
-            queued = request_handler.server.app.enqueue_run_once(
+            run_result = request_handler.server.app.enqueue_run_once_result(
                 source="api",
                 repo=repo if repo is not None else None,
                 repos=repos if isinstance(repos, list) else None,
@@ -270,7 +270,13 @@ def handle_api_request(request_handler, path: str, split) -> None:
         except Exception as exc:
             request_handler._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
-        request_handler._send_json({"queued": queued, "status": request_handler.server.app.snapshot()["run"]["last"]})
+        request_handler._send_json(
+            {
+                "queued": bool(run_result.get("queued")),
+                "queue_status": str(run_result.get("status") or "accepted"),
+                "status": request_handler.server.app.snapshot()["run"]["last"],
+            }
+        )
         return
 
     if path == "/api/v1/scheduler" and request_handler.command == "PUT":

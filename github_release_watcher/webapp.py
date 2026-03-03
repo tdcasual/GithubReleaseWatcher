@@ -17,10 +17,12 @@ from .auth_service import AuthService, _default_auth_config, _load_auth_config, 
 from .config import AppConfig, ConfigError, RepoConfig, WebDAVConfig, load_config
 from .github import parse_repo_spec
 from .metrics import MetricsRegistry
+from .repo_query_service import RepoQueryService
 from .run_queue import RunQueueService
 from .scheduler import SchedulerService
 from .settings_service import SettingsService
 from .state import load_state
+from .storage_health_service import StorageHealthService
 from .webapp_payloads import _safe_int
 from .webapp_api_router import handle_api_request
 from .webapp_handler_utils import (
@@ -83,13 +85,6 @@ def _guess_asset_types_from_patterns(patterns: list[str]) -> list[str]:
         if token in joined or (ext == "tar.gz" and (".tar\\.gz" in joined or ".tar.gz" in joined)):
             guesses.append(ext)
     return guesses
-
-
-def _sanitize_path_component(value: str) -> str:
-    raw = str(value or "").strip()
-    raw = raw.replace("/", "__").replace("\\", "__")
-    raw = raw.replace("..", "__")
-    return raw or "__empty__"
 
 
 def _public_config(config: AppConfig) -> dict[str, Any]:
@@ -202,6 +197,11 @@ class WatcherService:
         self._queue = self._run_queue.queue
         self._scheduler_service = SchedulerService(metrics=self._metrics)
         self._settings_service = SettingsService()
+        self._repo_query_service = RepoQueryService(
+            repo_key_from_spec=_repo_key_from_spec,
+            recommended_interval_seconds=self._scheduler_service.recommended_interval_seconds,
+        )
+        self._storage_health_service = StorageHealthService()
 
         self._started_at = _utc_now_iso()
         self._last_config_reload_at: str | None = None
@@ -265,6 +265,27 @@ class WatcherService:
             self._last_config_reload_at = _utc_now_iso()
             self._overrides = _read_json_file(self._overrides_path)
             self._auth_config = _load_auth_config(self._overrides)
+            if bool(self._auth_config.get("bootstrap_generated")):
+                bootstrap_username = str(self._auth_config.get("username") or "admin")
+                bootstrap_password = str(self._auth_config.get("bootstrap_password") or "")
+                if bootstrap_password:
+                    logging.warning(
+                        "Initialized first-login credentials (change immediately): username=%s password=%s",
+                        bootstrap_username,
+                        bootstrap_password,
+                    )
+                persisted_overrides = dict(self._overrides)
+                persisted_overrides["auth"] = {
+                    "username": bootstrap_username,
+                    "salt": str(self._auth_config.get("salt") or ""),
+                    "iterations": int(self._auth_config.get("iterations") or 200_000),
+                    "password_hash": str(self._auth_config.get("password_hash") or ""),
+                    "must_change_password": True,
+                }
+                persisted_overrides["updated_at"] = _utc_now_iso()
+                _write_json_atomic(self._overrides_path, persisted_overrides)
+                self._overrides = persisted_overrides
+                self._auth_config = _load_auth_config(self._overrides)
 
             try:
                 config = load_config(self._config_path)
@@ -332,6 +353,16 @@ class WatcherService:
         repo: str | None = None,
         repos: list[str] | None = None,
     ) -> bool:
+        result = self.enqueue_run_once_result(source=source, repo=repo, repos=repos)
+        return bool(result.get("queued"))
+
+    def enqueue_run_once_result(
+        self,
+        *,
+        source: str = "manual",
+        repo: str | None = None,
+        repos: list[str] | None = None,
+    ) -> dict[str, Any]:
         if repo is not None and repos is not None:
             raise ValueError("repo and repos cannot be set together")
 
@@ -371,7 +402,7 @@ class WatcherService:
                         if key not in existing:
                             raise ValueError("unknown repo")
 
-            return self._run_queue.enqueue(
+            return self._run_queue.enqueue_result(
                 source=source,
                 repo_key=repo_key,
                 repo_keys=repo_keys,
@@ -463,135 +494,14 @@ class WatcherService:
             config = copy.deepcopy(self._config) if self._config is not None else None
         if config is None:
             raise RuntimeError("Config not loaded")
-        state = load_state(config.state_file)
-        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
-        totals = {
-            "upload_retry_total": 0,
-            "upload_verify_failed_total": 0,
-            "upload_queue_depth": 0,
-        }
-        repos: list[dict[str, Any]] = []
-        for repo_key, repo_state in repos_state.items():
-            if not isinstance(repo_key, str):
-                continue
-            if not isinstance(repo_state, dict):
-                repo_state = {}
-            stats = repo_state.get("stats", {}) if isinstance(repo_state.get("stats"), dict) else {}
-            retry_total = int(stats.get("upload_retry_total", 0) or 0)
-            verify_failed_total = int(stats.get("upload_verify_failed_total", 0) or 0)
-            queue_depth = int(stats.get("upload_queue_depth", 0) or 0)
-            totals["upload_retry_total"] += retry_total
-            totals["upload_verify_failed_total"] += verify_failed_total
-            totals["upload_queue_depth"] += queue_depth
-            repos.append(
-                {
-                    "repo": repo_key,
-                    "upload_retry_total": retry_total,
-                    "upload_verify_failed_total": verify_failed_total,
-                    "upload_queue_depth": queue_depth,
-                }
-            )
-        return {"mode": str(getattr(config, "storage_mode", "local") or "local"), "totals": totals, "repos": repos}
+        return self._storage_health_service.get_storage_health(config=config)
 
     def sync_webdav_cache(self, *, prune: bool = False) -> dict[str, Any]:
         with self._lock:
             config = copy.deepcopy(self._config) if self._config is not None else None
         if config is None:
             raise RuntimeError("Config not loaded")
-        mode = str(getattr(config, "storage_mode", "local") or "local")
-        cache_root = config.download_dir / ".webdav_cache"
-        if mode != "webdav":
-            return {
-                "mode": mode,
-                "prune": bool(prune),
-                "totals": {
-                    "repos_processed": 0,
-                    "cache_files_checked": 0,
-                    "expected_files": 0,
-                    "stale_files": 0,
-                    "missing_files": 0,
-                    "pruned_files": 0,
-                },
-                "items": [],
-            }
-
-        state = load_state(config.state_file)
-        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
-
-        totals = {
-            "repos_processed": 0,
-            "cache_files_checked": 0,
-            "expected_files": 0,
-            "stale_files": 0,
-            "missing_files": 0,
-            "pruned_files": 0,
-        }
-        items: list[dict[str, Any]] = []
-
-        for repo_key, repo_state in repos_state.items():
-            if not isinstance(repo_key, str) or "/" not in repo_key:
-                continue
-            if not isinstance(repo_state, dict):
-                repo_state = {}
-            owner, repo = repo_key.split("/", 1)
-            cache_repo_dir = cache_root / owner / repo
-            releases = repo_state.get("releases", {}) if isinstance(repo_state.get("releases"), dict) else {}
-            expected: set[str] = set()
-            for tag, entry in releases.items():
-                if not isinstance(tag, str) or not tag:
-                    continue
-                entry_dict = entry if isinstance(entry, dict) else {}
-                assets = entry_dict.get("downloaded_assets", [])
-                tag_dir = _sanitize_path_component(tag)
-                if isinstance(assets, list):
-                    for asset in assets:
-                        if not isinstance(asset, str) or not asset:
-                            continue
-                        expected.add(f"{tag_dir}/{asset}")
-
-            existing: set[str] = set()
-            if cache_repo_dir.exists():
-                for p in cache_repo_dir.rglob("*"):
-                    if p.is_file():
-                        try:
-                            existing.add(str(p.relative_to(cache_repo_dir)).replace("\\", "/"))
-                        except Exception:
-                            continue
-
-            stale = sorted(existing - expected)
-            missing = sorted(expected - existing)
-            pruned = 0
-            if prune:
-                for rel in stale:
-                    p = cache_repo_dir / rel
-                    try:
-                        p.unlink()
-                        pruned += 1
-                    except FileNotFoundError:
-                        continue
-                    except Exception:
-                        continue
-
-            totals["repos_processed"] += 1
-            totals["cache_files_checked"] += len(existing)
-            totals["expected_files"] += len(expected)
-            totals["stale_files"] += len(stale)
-            totals["missing_files"] += len(missing)
-            totals["pruned_files"] += pruned
-            items.append(
-                {
-                    "repo": repo_key,
-                    "cache_files_checked": len(existing),
-                    "expected_files": len(expected),
-                    "stale_files": len(stale),
-                    "missing_files": len(missing),
-                    "pruned_files": pruned,
-                    "stale_examples": stale[:10],
-                    "missing_examples": missing[:10],
-                }
-            )
-
-        return {"mode": mode, "prune": bool(prune), "totals": totals, "items": items}
+        return self._storage_health_service.sync_webdav_cache(config=config, prune=prune)
 
     def preview_cleanup(self, repo: str | None = None) -> dict[str, Any]:
         with self._lock:
@@ -664,49 +574,11 @@ class WatcherService:
 
         if config is None:
             raise RuntimeError("Config not loaded")
-
-        state = load_state(config.state_file)
-        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
-
-        items: list[dict[str, Any]] = []
-        for repo_cfg in config.repos:
-            try:
-                key = _repo_key_from_spec(repo_cfg.name)
-            except Exception:
-                key = repo_cfg.name
-            repo_state = repos_state.get(key, {}) if isinstance(repos_state.get(key), dict) else {}
-            stats = repo_state.get("stats", {}) if isinstance(repo_state.get("stats"), dict) else {}
-            update = repo_state.get("update", {}) if isinstance(repo_state.get("update"), dict) else {}
-            releases = repo_state.get("releases", {}) if isinstance(repo_state.get("releases"), dict) else {}
-
-            downloaded_releases = 0
-            for entry in releases.values():
-                if not isinstance(entry, dict):
-                    continue
-                assets = entry.get("downloaded_assets", [])
-                if isinstance(assets, list) and assets:
-                    downloaded_releases += 1
-
-            next_run_at = next_runs.get(key) if scheduler_enabled else None
-            items.append(
-                {
-                    "key": key,
-                    "enabled": bool(getattr(repo_cfg, "enabled", True)),
-                    "name": repo_cfg.name,
-                    "keep_last": repo_cfg.keep_last,
-                    "keep_last_effective": (repo_cfg.keep_last or config.keep_last),
-                    "asset_types": list(getattr(repo_cfg, "asset_types", []) or []),
-                    "include_prereleases": bool(repo_cfg.include_prereleases),
-                    "include_drafts": bool(repo_cfg.include_drafts),
-                    "stats": stats,
-                    "update": update,
-                    "downloaded_releases_total": downloaded_releases,
-                    "next_run_at": datetime.fromtimestamp(next_run_at, tz=timezone.utc).isoformat() if next_run_at else None,
-                    "recommended_interval_seconds": self._scheduler_service.recommended_interval_seconds(config, repo_state),
-                }
-            )
-
-        return items
+        return self._repo_query_service.list_repo_summaries(
+            config=config,
+            next_runs=next_runs,
+            scheduler_enabled=scheduler_enabled,
+        )
 
     def get_repo_summary(self, repo_key: str) -> dict[str, Any]:
         repo_key = str(repo_key or "").strip()
@@ -719,49 +591,11 @@ class WatcherService:
 
         if config is None:
             raise RuntimeError("Config not loaded")
-
-        state = load_state(config.state_file)
-        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
-        repo_state = repos_state.get(repo_key, {}) if isinstance(repos_state.get(repo_key), dict) else {}
-        stats = repo_state.get("stats", {}) if isinstance(repo_state.get("stats"), dict) else {}
-        update = repo_state.get("update", {}) if isinstance(repo_state.get("update"), dict) else {}
-        releases = repo_state.get("releases", {}) if isinstance(repo_state.get("releases"), dict) else {}
-
-        downloaded_releases = 0
-        for entry in releases.values():
-            if not isinstance(entry, dict):
-                continue
-            assets = entry.get("downloaded_assets", [])
-            if isinstance(assets, list) and assets:
-                downloaded_releases += 1
-
-        cfg_repo: RepoConfig | None = None
-        for repo_cfg in config.repos:
-            try:
-                key = _repo_key_from_spec(repo_cfg.name)
-            except Exception:
-                key = repo_cfg.name
-            if key == repo_key:
-                cfg_repo = repo_cfg
-                break
-        if cfg_repo is None:
-            raise ValueError("unknown repo")
-
-        return {
-            "key": repo_key,
-            "enabled": bool(getattr(cfg_repo, "enabled", True)),
-            "name": cfg_repo.name,
-            "keep_last": cfg_repo.keep_last,
-            "keep_last_effective": (cfg_repo.keep_last or config.keep_last),
-            "asset_types": list(getattr(cfg_repo, "asset_types", []) or []),
-            "include_prereleases": bool(cfg_repo.include_prereleases),
-            "include_drafts": bool(cfg_repo.include_drafts),
-            "stats": stats,
-            "update": update,
-            "downloaded_releases_total": downloaded_releases,
-            "next_run_at": datetime.fromtimestamp(next_run_at, tz=timezone.utc).isoformat() if next_run_at else None,
-            "recommended_interval_seconds": self._scheduler_service.recommended_interval_seconds(config, repo_state),
-        }
+        return self._repo_query_service.get_repo_summary(
+            config=config,
+            repo_key=repo_key,
+            next_run_at=next_run_at,
+        )
 
     def get_repo_activity(self, repo_key: str, *, limit: int = 200) -> list[dict[str, Any]]:
         repo_key = str(repo_key or "").strip()
@@ -774,13 +608,7 @@ class WatcherService:
 
         if config is None:
             raise RuntimeError("Config not loaded")
-
-        state = load_state(config.state_file)
-        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
-        repo_state = repos_state.get(repo_key, {}) if isinstance(repos_state.get(repo_key), dict) else {}
-        items = repo_state.get("activity", []) if isinstance(repo_state.get("activity"), list) else []
-        tail = items[-limit:]
-        return [x for x in tail if isinstance(x, dict)]
+        return self._repo_query_service.get_repo_activity(config=config, repo_key=repo_key, limit=limit)
 
     def get_repo_releases(self, repo_key: str, *, limit: int = 100) -> list[dict[str, Any]]:
         repo_key = str(repo_key or "").strip()
@@ -793,60 +621,7 @@ class WatcherService:
 
         if config is None:
             raise RuntimeError("Config not loaded")
-
-        known = False
-        for repo_cfg in config.repos:
-            try:
-                key = _repo_key_from_spec(repo_cfg.name)
-            except Exception:
-                key = repo_cfg.name
-            if key == repo_key:
-                known = True
-                break
-        if not known:
-            raise ValueError("unknown repo")
-
-        state = load_state(config.state_file)
-        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
-        repo_state = repos_state.get(repo_key, {}) if isinstance(repos_state.get(repo_key), dict) else {}
-        releases = repo_state.get("releases", {}) if isinstance(repo_state.get("releases"), dict) else {}
-
-        def parse_ts(raw: Any) -> datetime | None:
-            if not isinstance(raw, str) or not raw.strip():
-                return None
-            try:
-                dt = datetime.fromisoformat(raw)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return dt
-            except Exception:
-                return None
-
-        items: list[dict[str, Any]] = []
-        for tag, entry in releases.items():
-            if not isinstance(tag, str) or not tag:
-                continue
-            if not isinstance(entry, dict):
-                entry = {}
-            assets = entry.get("downloaded_assets", [])
-            assets_list = assets if isinstance(assets, list) else []
-            items.append(
-                {
-                    "tag": tag,
-                    "processed_at": entry.get("processed_at"),
-                    "published_at": entry.get("published_at"),
-                    "created_at": entry.get("created_at"),
-                    "html_url": entry.get("html_url"),
-                    "downloaded_assets": [x for x in assets_list if isinstance(x, str)],
-                    "downloaded_assets_count": len([x for x in assets_list if isinstance(x, str)]),
-                    "_sort_ts": parse_ts(entry.get("published_at")) or parse_ts(entry.get("created_at")) or parse_ts(entry.get("processed_at")) or datetime.min.replace(tzinfo=timezone.utc),
-                }
-            )
-
-        items.sort(key=lambda x: x.get("_sort_ts") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-        for x in items:
-            x.pop("_sort_ts", None)
-        return items[:limit]
+        return self._repo_query_service.get_repo_releases(config=config, repo_key=repo_key, limit=limit)
 
     def test_webdav(self, patch: dict[str, Any] | None = None) -> None:
         with self._lock:
@@ -906,6 +681,7 @@ class WatcherService:
                 return
             config_snapshot = copy.deepcopy(self._config) if self._config is not None else None
 
+        started = time.perf_counter()
         exit_code: int | None = None
         error: str | None = None
         processed_keys: list[str] = []
@@ -950,6 +726,8 @@ class WatcherService:
             error = str(exc)
             logging.exception("run_once failed")
         finally:
+            duration_ms = (time.perf_counter() - started) * 1000.0
+            self._metrics.record_run_outcome(duration_ms=duration_ms, exit_code=exit_code, error=error)
             now = time.time()
             if config_snapshot is not None and processed_keys and self._scheduler_service.enabled:
                 try:
