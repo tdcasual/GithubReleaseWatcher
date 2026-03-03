@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 try:  # Python 3.11+
@@ -118,6 +119,11 @@ def load_config(path: Path) -> AppConfig:
     base_dir = path.resolve().parent
     raw_data = tomllib.loads(path.read_text(encoding="utf-8"))
     data = _expand_env_vars(raw_data)
+
+    known_top_level = {"interval_seconds", "download_dir", "state_file", "keep_last", "github", "storage", "repos"}
+    for key in data.keys():
+        if key not in known_top_level:
+            logging.warning("Unknown config key ignored: %s", key)
 
     config = AppConfig()
 

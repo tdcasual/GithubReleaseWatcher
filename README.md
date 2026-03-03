@@ -230,6 +230,7 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 - `[github].token`：GitHub Token（可留空，工具也会读取环境变量 `GITHUB_TOKEN` / `GITHUB_OAUTH_TOKEN`）
 - `[[repos]].name`：`owner/repo` 或完整仓库 URL
 - `[[repos]].include_assets` / `exclude_assets`：资产名匹配规则（Python `re` 正则），`include_assets` 为空表示下载全部资产
+- 未识别的顶层配置键会被忽略，并在日志输出 `Unknown config key ignored: <key>` 提示
 - `[[repos]].enabled`：是否启用该仓库（默认 `true`）
 - `[[repos]].asset_types`：按资产后缀筛选（如 `["exe","apk"]`，与 include/exclude 正则叠加生效）
 
