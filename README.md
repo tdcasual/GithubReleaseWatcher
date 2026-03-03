@@ -162,6 +162,16 @@ bash scripts/release/sync_vercel_public.sh
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
+CI（GitHub Actions）默认执行稳定回归集合（排除网络依赖集成用例）：
+
+```bash
+python3 -m pytest -q -k "not download_integration"
+node --check github_release_watcher/static/app.js
+node --check github_release_watcher/static/repo.js
+node --check deploy/vercel/public/app.js
+node --check deploy/vercel/public/repo.js
+```
+
 ## 收尾与发布文档
 
 - 收尾执行计划：`docs/plans/2026-03-01-release-polish-plan.md`

@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install package
+        run: python -m pip install -e .
+
+      - name: Run stable Python test suite
+        run: python -m pytest -q -k "not download_integration"
+
+      - name: Validate frontend scripts
+        run: |
+          node --check github_release_watcher/static/app.js
+          node --check github_release_watcher/static/repo.js
+          node --check deploy/vercel/public/app.js
+          node --check deploy/vercel/public/repo.js
