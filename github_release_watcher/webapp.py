@@ -193,8 +193,6 @@ class WatcherService:
         self._stop_event = threading.Event()
         self._metrics = MetricsRegistry()
         self._run_queue = RunQueueService(lock=self._lock, now_iso=_utc_now_iso, metrics=self._metrics)
-        # Backward compatibility for tests and internal references.
-        self._queue = self._run_queue.queue
         self._scheduler_service = SchedulerService(metrics=self._metrics)
         self._settings_service = SettingsService()
         self._repo_query_service = RepoQueryService(
@@ -229,7 +227,7 @@ class WatcherService:
         self._scheduler_thread.start()
 
         if not scheduler_enabled and run_immediately:
-            self.enqueue_run_once(source="startup")
+            self.enqueue_run_once_result(source="startup")
 
     def shutdown(self) -> None:
         self._stop_event.set()
@@ -259,33 +257,86 @@ class WatcherService:
                 keys.append(repo_cfg.name)
         return keys
 
+    def _bootstrap_credentials_path(self) -> Path:
+        return self._overrides_path.with_name(f"{self._overrides_path.name}.bootstrap.txt")
+
+    def _write_bootstrap_credentials_file(self, *, username: str, password: str) -> Path:
+        bootstrap_path = self._bootstrap_credentials_path()
+        body = (
+            "# GitHub Release Watcher bootstrap credentials\n"
+            "# Change password immediately after first login.\n"
+            f"username={username}\n"
+            f"password={password}\n"
+        )
+        bootstrap_path.parent.mkdir(parents=True, exist_ok=True)
+        bootstrap_path.write_text(body, encoding="utf-8")
+        try:
+            bootstrap_path.chmod(0o600)
+        except Exception:
+            logging.warning("Failed setting bootstrap credentials file permissions: %s", bootstrap_path)
+        return bootstrap_path
+
+    def _clear_bootstrap_credentials_file(self) -> None:
+        bootstrap_path = self._bootstrap_credentials_path()
+        try:
+            bootstrap_path.unlink()
+        except FileNotFoundError:
+            return
+        except Exception:
+            logging.warning("Failed removing bootstrap credentials file: %s", bootstrap_path)
+
+    def _apply_bootstrap_auth_if_needed_locked(self) -> None:
+        if not bool(self._auth_config.get("bootstrap_generated")):
+            self._clear_bootstrap_credentials_file()
+            return
+
+        bootstrap_username = str(self._auth_config.get("username") or "admin")
+        bootstrap_password = str(self._auth_config.get("bootstrap_password") or "")
+        if bootstrap_password:
+            bootstrap_path = self._write_bootstrap_credentials_file(
+                username=bootstrap_username,
+                password=bootstrap_password,
+            )
+            logging.warning(
+                "Initialized first-login credentials. Read bootstrap file and change password immediately: %s",
+                bootstrap_path,
+            )
+        else:
+            logging.warning("Initialized first-login credentials but bootstrap password generation failed")
+
+        persisted_overrides = dict(self._overrides)
+        persisted_overrides["auth"] = {
+            "username": bootstrap_username,
+            "salt": str(self._auth_config.get("salt") or ""),
+            "iterations": int(self._auth_config.get("iterations") or 200_000),
+            "password_hash": str(self._auth_config.get("password_hash") or ""),
+            "must_change_password": True,
+        }
+        persisted_overrides["updated_at"] = _utc_now_iso()
+        _write_json_atomic(self._overrides_path, persisted_overrides)
+        self._overrides = persisted_overrides
+        self._auth_config = _load_auth_config(self._overrides)
+
+    def _config_snapshot_locked(self) -> AppConfig:
+        if self._config is None:
+            raise RuntimeError("Config not loaded")
+        return copy.deepcopy(self._config)
+
+    def _config_snapshot(self) -> AppConfig:
+        with self._lock:
+            return self._config_snapshot_locked()
+
+    @staticmethod
+    def _state_snapshot(config: AppConfig) -> dict[str, Any]:
+        return load_state(config.state_file)
+
     def reload_config(self) -> None:
         with self._lock:
             self._config_error = None
             self._last_config_reload_at = _utc_now_iso()
             self._overrides = _read_json_file(self._overrides_path)
             self._auth_config = _load_auth_config(self._overrides)
-            if bool(self._auth_config.get("bootstrap_generated")):
-                bootstrap_username = str(self._auth_config.get("username") or "admin")
-                bootstrap_password = str(self._auth_config.get("bootstrap_password") or "")
-                if bootstrap_password:
-                    logging.warning(
-                        "Initialized first-login credentials (change immediately): username=%s password=%s",
-                        bootstrap_username,
-                        bootstrap_password,
-                    )
-                persisted_overrides = dict(self._overrides)
-                persisted_overrides["auth"] = {
-                    "username": bootstrap_username,
-                    "salt": str(self._auth_config.get("salt") or ""),
-                    "iterations": int(self._auth_config.get("iterations") or 200_000),
-                    "password_hash": str(self._auth_config.get("password_hash") or ""),
-                    "must_change_password": True,
-                }
-                persisted_overrides["updated_at"] = _utc_now_iso()
-                _write_json_atomic(self._overrides_path, persisted_overrides)
-                self._overrides = persisted_overrides
-                self._auth_config = _load_auth_config(self._overrides)
+            self._apply_bootstrap_auth_if_needed_locked()
 
             try:
                 config = load_config(self._config_path)
@@ -345,16 +396,6 @@ class WatcherService:
         overrides["updated_at"] = _utc_now_iso()
         _write_json_atomic(self._overrides_path, overrides)
         self.reload_config()
-
-    def enqueue_run_once(
-        self,
-        *,
-        source: str = "manual",
-        repo: str | None = None,
-        repos: list[str] | None = None,
-    ) -> bool:
-        result = self.enqueue_run_once_result(source=source, repo=repo, repos=repos)
-        return bool(result.get("queued"))
 
     def enqueue_run_once_result(
         self,
@@ -444,13 +485,17 @@ class WatcherService:
             next_run_at = self._scheduler_service.next_run_at
             repos_scheduled = len(self._scheduler_service.repo_next_run_at)
             base_interval_seconds = int(config.interval_seconds) if config is not None else None
+            bootstrap_credentials_file = self._bootstrap_credentials_path()
             return {
                 "started_at": self._started_at,
                 "config_path": str(self._config_path),
                 "overrides_path": str(self._overrides_path),
                 "log_file": str(self._log_file) if self._log_file else None,
                 "auth": {"username": str(self._auth_config.get("username") or "admin")},
-                "security": {"must_change_password": bool(self._auth_config.get("must_change_password", False))},
+                "security": {
+                    "must_change_password": bool(self._auth_config.get("must_change_password", False)),
+                    "bootstrap_credentials_file": str(bootstrap_credentials_file) if bootstrap_credentials_file.exists() else None,
+                },
                 "config_loaded": config is not None,
                 "config_error": self._config_error,
                 "last_config_reload_at": self._last_config_reload_at,
@@ -467,18 +512,11 @@ class WatcherService:
             }
 
     def read_state(self) -> dict[str, Any]:
-        with self._lock:
-            config = self._config
-            if config is None:
-                raise RuntimeError("Config not loaded")
-            state_path = config.state_file
-        return load_state(state_path)
+        config = self._config_snapshot()
+        return self._state_snapshot(config)
 
     def get_storage_capabilities(self) -> dict[str, Any]:
-        with self._lock:
-            config = copy.deepcopy(self._config) if self._config is not None else None
-        if config is None:
-            raise RuntimeError("Config not loaded")
+        config = self._config_snapshot()
         mode = str(getattr(config, "storage_mode", "local") or "local")
         if mode != "webdav":
             return {"mode": mode, "ok": True, "capabilities": {}}
@@ -490,25 +528,16 @@ class WatcherService:
             return {"mode": mode, "ok": False, "capabilities": {}, "error": str(exc)}
 
     def get_storage_health(self) -> dict[str, Any]:
-        with self._lock:
-            config = copy.deepcopy(self._config) if self._config is not None else None
-        if config is None:
-            raise RuntimeError("Config not loaded")
+        config = self._config_snapshot()
         return self._storage_health_service.get_storage_health(config=config)
 
     def sync_webdav_cache(self, *, prune: bool = False) -> dict[str, Any]:
-        with self._lock:
-            config = copy.deepcopy(self._config) if self._config is not None else None
-        if config is None:
-            raise RuntimeError("Config not loaded")
+        config = self._config_snapshot()
         return self._storage_health_service.sync_webdav_cache(config=config, prune=prune)
 
     def preview_cleanup(self, repo: str | None = None) -> dict[str, Any]:
-        with self._lock:
-            config = copy.deepcopy(self._config) if self._config is not None else None
-        if config is None:
-            raise RuntimeError("Config not loaded")
-        state = load_state(config.state_file)
+        config = self._config_snapshot()
+        state = self._state_snapshot(config)
         repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
 
         cfg_by_key: dict[str, RepoConfig] = {}
@@ -568,16 +597,16 @@ class WatcherService:
 
     def list_repo_summaries(self) -> list[dict[str, Any]]:
         with self._lock:
-            config = copy.deepcopy(self._config) if self._config is not None else None
+            config = self._config_snapshot_locked()
             next_runs = dict(self._scheduler_service.repo_next_run_at)
             scheduler_enabled = bool(self._scheduler_service.enabled)
 
-        if config is None:
-            raise RuntimeError("Config not loaded")
+        state = self._state_snapshot(config)
         return self._repo_query_service.list_repo_summaries(
             config=config,
             next_runs=next_runs,
             scheduler_enabled=scheduler_enabled,
+            state=state,
         )
 
     def get_repo_summary(self, repo_key: str) -> dict[str, Any]:
@@ -586,15 +615,15 @@ class WatcherService:
             raise ValueError("repo_key required")
 
         with self._lock:
-            config = copy.deepcopy(self._config) if self._config is not None else None
+            config = self._config_snapshot_locked()
             next_run_at = self._scheduler_service.repo_next_run_at.get(repo_key) if self._scheduler_service.enabled else None
 
-        if config is None:
-            raise RuntimeError("Config not loaded")
+        state = self._state_snapshot(config)
         return self._repo_query_service.get_repo_summary(
             config=config,
             repo_key=repo_key,
             next_run_at=next_run_at,
+            state=state,
         )
 
     def get_repo_activity(self, repo_key: str, *, limit: int = 200) -> list[dict[str, Any]]:
@@ -603,12 +632,9 @@ class WatcherService:
             raise ValueError("repo_key required")
         limit = max(1, min(int(limit), 2000))
 
-        with self._lock:
-            config = copy.deepcopy(self._config) if self._config is not None else None
-
-        if config is None:
-            raise RuntimeError("Config not loaded")
-        return self._repo_query_service.get_repo_activity(config=config, repo_key=repo_key, limit=limit)
+        config = self._config_snapshot()
+        state = self._state_snapshot(config)
+        return self._repo_query_service.get_repo_activity(config=config, repo_key=repo_key, limit=limit, state=state)
 
     def get_repo_releases(self, repo_key: str, *, limit: int = 100) -> list[dict[str, Any]]:
         repo_key = str(repo_key or "").strip()
@@ -616,19 +642,13 @@ class WatcherService:
             raise ValueError("repo_key required")
         limit = max(1, min(int(limit), 2000))
 
-        with self._lock:
-            config = copy.deepcopy(self._config) if self._config is not None else None
-
-        if config is None:
-            raise RuntimeError("Config not loaded")
-        return self._repo_query_service.get_repo_releases(config=config, repo_key=repo_key, limit=limit)
+        config = self._config_snapshot()
+        state = self._state_snapshot(config)
+        return self._repo_query_service.get_repo_releases(config=config, repo_key=repo_key, limit=limit, state=state)
 
     def test_webdav(self, patch: dict[str, Any] | None = None) -> None:
-        with self._lock:
-            config = self._config
-            if config is None:
-                raise RuntimeError("Config not loaded")
-            base = config.webdav
+        config = self._config_snapshot()
+        base = config.webdav
 
         base_url = str(getattr(base, "base_url", "") or "")
         username = getattr(base, "username", None)
@@ -757,8 +777,13 @@ class WatcherService:
                 continue
 
             if due_repo is not None:
-                queued = self.enqueue_run_once(source="scheduler", repo=due_repo)
-                if queued:
+                try:
+                    run_result = self.enqueue_run_once_result(source="scheduler", repo=due_repo)
+                except Exception:
+                    logging.exception("Scheduler failed to enqueue due repo: %s", due_repo)
+                    self._stop_event.wait(timeout=0.5)
+                    continue
+                if str(run_result.get("status") or "") == "accepted":
                     with self._lock:
                         # Temporary placeholder to avoid rapid re-queue attempts.
                         self._scheduler_service.defer_repo(due_repo, now=now, seconds=60.0)

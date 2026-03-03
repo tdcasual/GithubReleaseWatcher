@@ -17,15 +17,20 @@ class RepoQueryService:
         self._repo_key_from_spec = repo_key_from_spec
         self._recommended_interval_seconds = recommended_interval_seconds
 
+    @staticmethod
+    def _repos_state(config: AppConfig, state: dict[str, Any] | None) -> dict[str, Any]:
+        source = state if isinstance(state, dict) else load_state(config.state_file)
+        return source.get("repos", {}) if isinstance(source.get("repos"), dict) else {}
+
     def list_repo_summaries(
         self,
         *,
         config: AppConfig,
         next_runs: dict[str, float],
         scheduler_enabled: bool,
+        state: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        state = load_state(config.state_file)
-        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
+        repos_state = self._repos_state(config, state)
 
         items: list[dict[str, Any]] = []
         for repo_cfg in config.repos:
@@ -67,13 +72,19 @@ class RepoQueryService:
 
         return items
 
-    def get_repo_summary(self, *, config: AppConfig, repo_key: str, next_run_at: float | None) -> dict[str, Any]:
+    def get_repo_summary(
+        self,
+        *,
+        config: AppConfig,
+        repo_key: str,
+        next_run_at: float | None,
+        state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         repo_key = str(repo_key or "").strip()
         if not repo_key:
             raise ValueError("repo_key required")
 
-        state = load_state(config.state_file)
-        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
+        repos_state = self._repos_state(config, state)
         repo_state = repos_state.get(repo_key, {}) if isinstance(repos_state.get(repo_key), dict) else {}
         stats = repo_state.get("stats", {}) if isinstance(repo_state.get("stats"), dict) else {}
         update = repo_state.get("update", {}) if isinstance(repo_state.get("update"), dict) else {}
@@ -115,20 +126,33 @@ class RepoQueryService:
             "recommended_interval_seconds": self._recommended_interval_seconds(config, repo_state),
         }
 
-    def get_repo_activity(self, *, config: AppConfig, repo_key: str, limit: int = 200) -> list[dict[str, Any]]:
+    def get_repo_activity(
+        self,
+        *,
+        config: AppConfig,
+        repo_key: str,
+        limit: int = 200,
+        state: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         repo_key = str(repo_key or "").strip()
         if not repo_key:
             raise ValueError("repo_key required")
         limit = max(1, min(int(limit), 2000))
 
-        state = load_state(config.state_file)
-        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
+        repos_state = self._repos_state(config, state)
         repo_state = repos_state.get(repo_key, {}) if isinstance(repos_state.get(repo_key), dict) else {}
         items = repo_state.get("activity", []) if isinstance(repo_state.get("activity"), list) else []
         tail = items[-limit:]
         return [x for x in tail if isinstance(x, dict)]
 
-    def get_repo_releases(self, *, config: AppConfig, repo_key: str, limit: int = 100) -> list[dict[str, Any]]:
+    def get_repo_releases(
+        self,
+        *,
+        config: AppConfig,
+        repo_key: str,
+        limit: int = 100,
+        state: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         repo_key = str(repo_key or "").strip()
         if not repo_key:
             raise ValueError("repo_key required")
@@ -146,8 +170,7 @@ class RepoQueryService:
         if not known:
             raise ValueError("unknown repo")
 
-        state = load_state(config.state_file)
-        repos_state = state.get("repos", {}) if isinstance(state.get("repos"), dict) else {}
+        repos_state = self._repos_state(config, state)
         repo_state = repos_state.get(repo_key, {}) if isinstance(repos_state.get(repo_key), dict) else {}
         releases = repo_state.get("releases", {}) if isinstance(repo_state.get("releases"), dict) else {}
 

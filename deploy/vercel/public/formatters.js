@@ -52,11 +52,20 @@
       .replace(/'/g, "&#39;");
   }
 
+  function queueStatusFeedback(rawStatus) {
+    const status = String(rawStatus || "").trim().toLowerCase();
+    if (status === "accepted") return { status, message: "已加入队列。", tone: "ok" };
+    if (status === "deduplicated") return { status, message: "任务已在运行/队列中。", tone: "warn" };
+    if (status === "rejected_overflow") return { status, message: "队列已满，请稍后重试。", tone: "bad" };
+    return { status: status || "unknown", message: `未知队列状态：${status || "unknown"}`, tone: "warn" };
+  }
+
   global.GRWFormatters = {
     escapeHtml,
     formatError,
     formatRunScope,
     formatSignedDelta,
     isoToLocal,
+    queueStatusFeedback,
   };
 })(window);

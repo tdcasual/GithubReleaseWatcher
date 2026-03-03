@@ -20,12 +20,20 @@ def _empty_state() -> dict[str, Any]:
 
 
 def _backup_corrupted_state(path: Path) -> None:
+    _backup_state_file(path, reason="broken")
+
+
+def _backup_unmigratable_state(path: Path) -> None:
+    _backup_state_file(path, reason="unmigratable")
+
+
+def _backup_state_file(path: Path, *, reason: str) -> None:
     try:
         stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        backup = path.with_name(f"{path.name}.broken-{stamp}")
+        backup = path.with_name(f"{path.name}.{reason}-{stamp}")
         idx = 1
         while backup.exists():
-            backup = path.with_name(f"{path.name}.broken-{stamp}-{idx}")
+            backup = path.with_name(f"{path.name}.{reason}-{stamp}-{idx}")
             idx += 1
         path.replace(backup)
     except Exception:
@@ -48,6 +56,7 @@ def load_state(path: Path) -> dict[str, Any]:
         try:
             data = migrate_state(data, now_iso=_now_iso)
         except Exception:
+            _backup_unmigratable_state(path)
             return _empty_state()
     if "repos" not in data or not isinstance(data["repos"], dict):
         data["repos"] = {}

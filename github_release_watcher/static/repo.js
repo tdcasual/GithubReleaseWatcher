@@ -6,11 +6,12 @@ bootstrap.requireModules(["GRWApiClient", "GRWFormatters", "GRWAppUiUtils", "GRW
 
 const API = window.GRWApiClient?.API;
 const isoToLocal = window.GRWFormatters?.isoToLocal;
+const queueStatusFeedback = window.GRWFormatters?.queueStatusFeedback;
 const createAppUiUtils = window.GRWAppUiUtils?.createAppUiUtils;
 const createAuthController = window.GRWAppAuth?.createAuthController;
 const createMobileBehaviorController = window.GRWMobileBehavior?.createMobileBehaviorController;
 
-if (!API || !isoToLocal || !createAppUiUtils || !createAuthController || !createMobileBehaviorController) {
+if (!API || !isoToLocal || !queueStatusFeedback || !createAppUiUtils || !createAuthController || !createMobileBehaviorController) {
   throw new Error("Shared API client not loaded");
 }
 
@@ -297,14 +298,13 @@ async function runRepoNow() {
       }
       toast(`触发失败：${formatApiError(res.error)}`, "bad");
     } else {
+      const feedback = queueStatusFeedback(res.queue_status);
       if (hint) {
-        hint.className = "hint";
-        hint.textContent = res.queued
-          ? `已加入队列：${new Date().toLocaleTimeString()}`
-          : `任务已在运行/队列中：${new Date().toLocaleTimeString()}`;
+        hint.className = feedback.tone === "bad" ? "hint danger" : "hint";
+        hint.textContent = `${feedback.message.replace(/。$/, "")}：${new Date().toLocaleTimeString()}`;
         revealHintIfNeeded(hint);
       }
-      toast(res.queued ? "已加入队列。" : "任务已在运行/队列中。", "ok");
+      toast(feedback.message, feedback.tone);
     }
   } catch (e) {
     if (hint) {

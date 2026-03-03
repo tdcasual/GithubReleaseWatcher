@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import logging
 import tempfile
 import threading
 import time
@@ -41,6 +42,67 @@ class WebappApiSmokeTests(unittest.TestCase):
         t.start()
         time.sleep(0.02)
         return server, t, token
+
+    def test_bootstrap_credentials_written_to_file_and_not_logged(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            cfg_path = self._write_base_config(base, repos=["owner/repo"])
+            messages: list[str] = []
+
+            class _CaptureHandler(logging.Handler):
+                def emit(self, record: logging.LogRecord) -> None:
+                    messages.append(record.getMessage())
+
+            root = logging.getLogger()
+            handler = _CaptureHandler(level=logging.WARNING)
+            root.addHandler(handler)
+            try:
+                app = WatcherService(cfg_path)
+            finally:
+                root.removeHandler(handler)
+
+            try:
+                security = app.snapshot().get("security", {})
+                bootstrap_path_raw = security.get("bootstrap_credentials_file")
+                self.assertIsInstance(bootstrap_path_raw, str)
+                bootstrap_path = Path(str(bootstrap_path_raw))
+                self.assertTrue(bootstrap_path.exists())
+
+                content = bootstrap_path.read_text(encoding="utf-8")
+                self.assertIn("username=", content)
+                self.assertIn("password=", content)
+                bootstrap_password = ""
+                for line in content.splitlines():
+                    if line.startswith("password="):
+                        bootstrap_password = line.split("=", 1)[1].strip()
+                        break
+                self.assertTrue(bootstrap_password)
+
+                joined = "\n".join(messages)
+                self.assertNotIn("password=", joined)
+                self.assertNotIn(bootstrap_password, joined)
+            finally:
+                app.shutdown()
+
+    def test_bootstrap_credentials_file_removed_after_set_credentials(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            cfg_path = self._write_base_config(base, repos=["owner/repo"])
+            app = WatcherService(cfg_path)
+            try:
+                security_before = app.snapshot().get("security", {})
+                bootstrap_path_raw = security_before.get("bootstrap_credentials_file")
+                self.assertIsInstance(bootstrap_path_raw, str)
+                bootstrap_path = Path(str(bootstrap_path_raw))
+                self.assertTrue(bootstrap_path.exists())
+
+                app.set_credentials("tester", "pass")
+
+                security_after = app.snapshot().get("security", {})
+                self.assertIsNone(security_after.get("bootstrap_credentials_file"))
+                self.assertFalse(bootstrap_path.exists())
+            finally:
+                app.shutdown()
 
     def test_preview_cleanup_returns_old_tags(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -174,10 +236,10 @@ class WebappApiSmokeTests(unittest.TestCase):
             cfg_path = self._write_base_config(base, repos=["owner/repo", "owner/another"])
             app = WatcherService(cfg_path)
 
-            queued = app.enqueue_run_once(source="api", repos=["owner/repo", "owner/another"])
+            result = app.enqueue_run_once_result(source="api", repos=["owner/repo", "owner/another"])
 
-            self.assertTrue(queued)
-            task = app._queue.get_nowait()  # type: ignore[attr-defined]
+            self.assertEqual(result.get("status"), "accepted")
+            task = app._run_queue.queue.get_nowait()  # type: ignore[attr-defined]
             self.assertEqual(task.get("type"), "run_once")
             self.assertEqual(task.get("repo_keys"), ["owner/repo", "owner/another"])
 
@@ -188,7 +250,7 @@ class WebappApiSmokeTests(unittest.TestCase):
             app = WatcherService(cfg_path)
 
             with self.assertRaises(ValueError):
-                app.enqueue_run_once(source="api", repos=["owner/repo", "owner/missing"])
+                app.enqueue_run_once_result(source="api", repos=["owner/repo", "owner/missing"])
 
     def test_run_api_rejects_null_repos_field(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -249,12 +311,12 @@ class WebappApiSmokeTests(unittest.TestCase):
 
                 self.assertEqual(first_res.status, 200)
                 self.assertEqual(first_payload.get("queue_status"), "accepted")
-                self.assertTrue(first_payload.get("queued"))
+                self.assertNotIn("queued", first_payload)
                 self.assertIn("status", first_payload)
 
                 self.assertEqual(second_res.status, 200)
                 self.assertEqual(second_payload.get("queue_status"), "deduplicated")
-                self.assertFalse(second_payload.get("queued"))
+                self.assertNotIn("queued", second_payload)
                 self.assertIn("status", second_payload)
             finally:
                 if conn is not None:
@@ -262,6 +324,25 @@ class WebappApiSmokeTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=2)
+                app.shutdown()
+
+    def test_scheduler_thread_survives_config_reload_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            cfg_path = self._write_base_config(base, repos=["owner/repo"])
+            app = WatcherService(cfg_path)
+            app.start(scheduler_enabled=True, run_immediately=False)
+            try:
+                cfg_path.write_text("invalid = [", encoding="utf-8")
+                app.reload_config()
+                with app._lock:
+                    due_keys = list(app._scheduler_service.repo_next_run_at.keys())
+                    if due_keys:
+                        app._scheduler_service.defer_repo(due_keys[0], now=time.time(), seconds=-1)
+                time.sleep(0.6)
+                self.assertFalse(app.snapshot().get("config_loaded"))
+                self.assertTrue(app._scheduler_thread.is_alive())
+            finally:
                 app.shutdown()
 
 

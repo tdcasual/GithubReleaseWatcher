@@ -4,6 +4,7 @@ const isoToLocal = window.GRWFormatters?.isoToLocal;
 const formatSignedDelta = window.GRWFormatters?.formatSignedDelta;
 const formatRunScope = window.GRWFormatters?.formatRunScope;
 const escapeHtml = window.GRWFormatters?.escapeHtml;
+const queueStatusFeedback = window.GRWFormatters?.queueStatusFeedback;
 const renderStructuredLogs = window.GRWLogsView?.renderStructuredLogs;
 const createRepoController = window.GRWRepoController?.createRepoController;
 const createSettingsController = window.GRWSettingsController?.createSettingsController;
@@ -23,6 +24,7 @@ if (
   !formatSignedDelta ||
   !formatRunScope ||
   !escapeHtml ||
+  !queueStatusFeedback ||
   !renderStructuredLogs ||
   !createRepoController ||
   !createSettingsController ||
@@ -153,6 +155,7 @@ const batchActionsController = createBatchActionsController({
   getSelectedRepoKeys: () => getSelectedRepoKeys(),
   setBatchActionHint: (message, kind) => setBatchActionHint(message, kind),
   toast: (message, kind) => toast(message, kind),
+  queueStatusFeedback: (status) => queueStatusFeedback(status),
   repoDraft: (key) => repoDraft(key),
   setDirty: (value) => setDirty(value),
   renderRepos: () => renderRepos(),
@@ -554,7 +557,7 @@ function renderRepos() {
       try {
         const res = await withAuth(() => API.post("/run", { repo: repo.key }));
         if (res.error) toast(`触发失败：${res.error}`, "bad");
-        else toast(res.queued ? "已加入队列。" : "任务已在运行/队列中。", "ok");
+        else { const feedback = queueStatusFeedback(res.queue_status); toast(feedback.message, feedback.tone); }
       } catch (e) {
         toast(`触发失败：${formatError(e)}`, "bad");
       } finally {
@@ -881,7 +884,7 @@ async function runNow() {
   try {
     const res = await withAuth(() => API.post("/run", {}));
     if (res.error) toast(`触发失败：${res.error}`, "bad");
-    else toast(res.queued ? "已加入队列。" : "任务已在运行/队列中。", "ok");
+    else { const feedback = queueStatusFeedback(res.queue_status); toast(feedback.message, feedback.tone); }
   } catch (e) {
     toast(`触发失败：${formatError(e)}`, "bad");
   } finally {

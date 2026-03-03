@@ -70,10 +70,10 @@ python3 watcher.py --config config.toml --web --no-ui
 
 主要 API：
 
-- `POST /api/v1/login`：登录（首次启动生成初始化口令并写入日志，成功后设置 Cookie 会话）
+- `POST /api/v1/login`：登录（首次启动生成初始化口令并写入本地 bootstrap 凭据文件，成功后设置 Cookie 会话）
 - `POST /api/v1/logout`：退出登录
 - `GET /api/v1/status`：运行状态、最近一次执行结果、当前配置（脱敏）
-- `POST /api/v1/run`：触发一次检查/下载（可传 `{"repo":"owner/repo"}` 执行单仓库，或 `{"repos":["owner/repo","foo/bar"]}` 批量执行）；响应包含兼容字段 `queued`，以及更细粒度 `queue_status`（`accepted` / `deduplicated` / `rejected_overflow`）
+- `POST /api/v1/run`：触发一次检查/下载（可传 `{"repo":"owner/repo"}` 执行单仓库，或 `{"repos":["owner/repo","foo/bar"]}` 批量执行）；响应返回 `queue_status`（`accepted` / `deduplicated` / `rejected_overflow`）
 - `PUT /api/v1/settings`：更新运行配置（写入 `config.override.json`）
 - `PUT /api/v1/scheduler`：开启/关闭自动轮询
 - `GET /api/v1/repos`：仓库列表（包含统计、下次检查时间、推荐间隔）
@@ -158,7 +158,7 @@ bash scripts/release/sync_vercel_public.sh
 
 ### 安全建议（强烈建议）
 
-- 首次启动会生成初始化口令（写入服务日志）；首次登录后必须在设置中改密，系统会限制敏感操作直到完成改密
+- 首次启动会生成初始化口令并写入本地 bootstrap 凭据文件（`config.override.json.bootstrap.txt`，不会输出到服务日志）；首次登录后必须在设置中改密，系统会限制敏感操作直到完成改密
 - 暴露到公网建议再加一层访问控制（Cloudflare Zero Trust / BasicAuth / IP 白名单 / 反向代理鉴权等）
 - 登录失败会触发限流（短时多次失败会返回 429）
 
