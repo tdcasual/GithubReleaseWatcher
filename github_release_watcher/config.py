@@ -11,6 +11,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .config_validation import (
+    normalize_asset_type,
+    normalize_storage_mode,
+    validate_cleanup_mode,
+    validate_upload_temp_suffix,
+)
+
 
 class ConfigError(ValueError):
     pass
@@ -101,17 +108,6 @@ def _compile_regexes(patterns: list[str], field_name: str) -> None:
             raise ConfigError(f"Invalid regex in {field_name}: {pattern!r}: {exc}") from exc
 
 
-def _normalize_asset_type(raw: str) -> str:
-    value = raw.strip().lower()
-    if value.startswith("."):
-        value = value[1:]
-    if not value:
-        raise ConfigError("asset_types items must be non-empty strings")
-    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,31}", value):
-        raise ConfigError(f"asset_types item contains invalid characters: {raw!r}")
-    return value
-
-
 def load_config(path: Path) -> AppConfig:
     if not path.exists():
         raise ConfigError(f"Config file not found: {path}")
@@ -179,7 +175,14 @@ def load_config(path: Path) -> AppConfig:
 
         asset_types = []
         for value in asset_types_raw:
-            norm = _normalize_asset_type(value)
+            try:
+                norm = normalize_asset_type(
+                    value,
+                    empty_message="asset_types items must be non-empty strings",
+                    invalid_message=f"asset_types item contains invalid characters: {value!r}",
+                )
+            except ValueError as exc:
+                raise ConfigError(str(exc)) from exc
             if norm not in asset_types:
                 asset_types.append(norm)
 
@@ -204,10 +207,10 @@ def load_config(path: Path) -> AppConfig:
     if storage is not None and not isinstance(storage, dict):
         raise ConfigError("[storage] must be a table")
     if isinstance(storage, dict) and "mode" in storage:
-        mode = str(storage.get("mode") or "").strip().lower()
-        if mode not in ("local", "webdav"):
-            raise ConfigError("storage.mode must be 'local' or 'webdav'")
-        config.storage_mode = mode
+        try:
+            config.storage_mode = normalize_storage_mode(storage.get("mode"))
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from exc
 
     webdav = storage.get("webdav", {}) if isinstance(storage, dict) else {}
     if webdav is not None and not isinstance(webdav, dict):
@@ -244,18 +247,22 @@ def load_config(path: Path) -> AppConfig:
         raise ConfigError("keep_last must be > 0")
     if config.storage_mode == "webdav" and not str(config.webdav.base_url or "").strip():
         raise ConfigError("storage.webdav.base_url is required when storage.mode = 'webdav'")
+    if config.webdav.timeout_seconds < 5 or config.webdav.timeout_seconds > 600:
+        raise ConfigError("storage.webdav.timeout_seconds must be between 5 and 600")
     if config.webdav.upload_concurrency <= 0 or config.webdav.upload_concurrency > 32:
         raise ConfigError("storage.webdav.upload_concurrency must be between 1 and 32")
     if config.webdav.max_retries <= 0 or config.webdav.max_retries > 20:
         raise ConfigError("storage.webdav.max_retries must be between 1 and 20")
     if config.webdav.retry_backoff_seconds <= 0 or config.webdav.retry_backoff_seconds > 300:
         raise ConfigError("storage.webdav.retry_backoff_seconds must be between 1 and 300")
-    if not isinstance(config.webdav.upload_temp_suffix, str) or not config.webdav.upload_temp_suffix:
-        raise ConfigError("storage.webdav.upload_temp_suffix must be a non-empty string")
-    if "/" in config.webdav.upload_temp_suffix or "\\" in config.webdav.upload_temp_suffix:
-        raise ConfigError("storage.webdav.upload_temp_suffix cannot contain path separators")
-    if config.webdav.cleanup_mode not in ("delete", "trash"):
-        raise ConfigError("storage.webdav.cleanup_mode must be 'delete' or 'trash'")
+    try:
+        config.webdav.upload_temp_suffix = validate_upload_temp_suffix(config.webdav.upload_temp_suffix)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+    try:
+        config.webdav.cleanup_mode = validate_cleanup_mode(config.webdav.cleanup_mode)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
 
     for idx, repo_cfg in enumerate(config.repos):
         if repo_cfg.keep_last is not None and repo_cfg.keep_last <= 0:

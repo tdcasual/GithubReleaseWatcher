@@ -223,6 +223,47 @@ class WebappApiSmokeTests(unittest.TestCase):
                 thread.join(timeout=2)
                 app.shutdown()
 
+    def test_run_api_returns_queue_status(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            cfg_path = self._write_base_config(base, repos=["owner/repo"])
+            app = WatcherService(cfg_path)
+            app.set_credentials("tester", "pass")
+            server, thread, token = self._start_server_with_session(app)
+            conn: http.client.HTTPConnection | None = None
+            try:
+                host, port = server.server_address
+                conn = http.client.HTTPConnection(str(host), int(port), timeout=3)
+                headers = {
+                    "Content-Type": "application/json",
+                    "Cookie": f"grw_session={token}",
+                }
+
+                conn.request("POST", "/api/v1/run", body=json.dumps({"repo": "owner/repo"}), headers=headers)
+                first_res = conn.getresponse()
+                first_payload = json.loads(first_res.read().decode("utf-8"))
+
+                conn.request("POST", "/api/v1/run", body=json.dumps({"repo": "owner/repo"}), headers=headers)
+                second_res = conn.getresponse()
+                second_payload = json.loads(second_res.read().decode("utf-8"))
+
+                self.assertEqual(first_res.status, 200)
+                self.assertEqual(first_payload.get("queue_status"), "accepted")
+                self.assertTrue(first_payload.get("queued"))
+                self.assertIn("status", first_payload)
+
+                self.assertEqual(second_res.status, 200)
+                self.assertEqual(second_payload.get("queue_status"), "deduplicated")
+                self.assertFalse(second_payload.get("queued"))
+                self.assertIn("status", second_payload)
+            finally:
+                if conn is not None:
+                    conn.close()
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                app.shutdown()
+
 
 if __name__ == "__main__":
     unittest.main()

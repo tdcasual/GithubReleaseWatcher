@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .config_validation import normalize_asset_type, normalize_storage_mode
+
 
 def _safe_int(value: Any, *, min_value: int | None = None, max_value: int | None = None) -> int:
     if isinstance(value, bool):
@@ -22,14 +24,7 @@ def _safe_int(value: Any, *, min_value: int | None = None, max_value: int | None
 
 
 def _normalize_asset_type(raw: str) -> str:
-    value = raw.strip().lower()
-    if value.startswith("."):
-        value = value[1:]
-    if not value:
-        raise ValueError("asset type is empty")
-    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,31}", value):
-        raise ValueError("asset type has invalid characters")
-    return value
+    return normalize_asset_type(raw)
 
 
 def _normalize_asset_types(values: Any) -> list[str]:
@@ -65,9 +60,4 @@ def _resolve_path(base_dir: Path, raw: Any) -> Path:
 
 
 def _normalize_storage_mode(raw: Any) -> str:
-    mode = str(raw or "").strip().lower()
-    if mode in ("local", ""):
-        return "local"
-    if mode == "webdav":
-        return "webdav"
-    raise ValueError("storage.mode must be 'local' or 'webdav'")
+    return normalize_storage_mode(raw)

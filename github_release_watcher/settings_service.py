@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from .config_validation import validate_cleanup_mode, validate_upload_temp_suffix
 from .webapp_overrides import _repo_key_from_spec
 from .webapp_payloads import _compile_regex_list, _normalize_asset_types, _normalize_storage_mode, _safe_int
 
@@ -80,17 +81,9 @@ class SettingsService:
                 if "verify_after_upload" in webdav_patch:
                     webdav_store["verify_after_upload"] = bool(webdav_patch.get("verify_after_upload", True))
                 if "upload_temp_suffix" in webdav_patch:
-                    suffix = str(webdav_patch.get("upload_temp_suffix") or "").strip()
-                    if not suffix:
-                        raise ValueError("webdav.upload_temp_suffix must be a non-empty string")
-                    if "/" in suffix or "\\" in suffix:
-                        raise ValueError("webdav.upload_temp_suffix cannot contain path separators")
-                    webdav_store["upload_temp_suffix"] = suffix
+                    webdav_store["upload_temp_suffix"] = validate_upload_temp_suffix(webdav_patch.get("upload_temp_suffix"))
                 if "cleanup_mode" in webdav_patch:
-                    cleanup_mode = str(webdav_patch.get("cleanup_mode") or "").strip().lower()
-                    if cleanup_mode not in ("delete", "trash"):
-                        raise ValueError("webdav.cleanup_mode must be 'delete' or 'trash'")
-                    webdav_store["cleanup_mode"] = cleanup_mode
+                    webdav_store["cleanup_mode"] = validate_cleanup_mode(webdav_patch.get("cleanup_mode"))
 
             mode_effective = _normalize_storage_mode(storage_store.get("mode"))
             if mode_effective == "webdav":

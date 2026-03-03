@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import AppConfig, RepoConfig, WebDAVConfig
+from .config_validation import validate_cleanup_mode, validate_upload_temp_suffix
 from .github import parse_repo_spec
 from .webapp_payloads import _compile_regex_list, _normalize_asset_types, _normalize_storage_mode, _resolve_path, _safe_int
 
@@ -55,17 +56,9 @@ def _apply_overrides(config: AppConfig, overrides: dict[str, Any], *, base_dir: 
             if "verify_after_upload" in webdav_overrides:
                 config.webdav.verify_after_upload = bool(webdav_overrides.get("verify_after_upload", True))
             if "upload_temp_suffix" in webdav_overrides:
-                suffix = str(webdav_overrides.get("upload_temp_suffix") or "").strip()
-                if not suffix:
-                    raise ValueError("webdav.upload_temp_suffix must be a non-empty string")
-                if "/" in suffix or "\\" in suffix:
-                    raise ValueError("webdav.upload_temp_suffix cannot contain path separators")
-                config.webdav.upload_temp_suffix = suffix
+                config.webdav.upload_temp_suffix = validate_upload_temp_suffix(webdav_overrides.get("upload_temp_suffix"))
             if "cleanup_mode" in webdav_overrides:
-                cleanup_mode = str(webdav_overrides.get("cleanup_mode") or "").strip().lower()
-                if cleanup_mode not in ("delete", "trash"):
-                    raise ValueError("webdav.cleanup_mode must be 'delete' or 'trash'")
-                config.webdav.cleanup_mode = cleanup_mode
+                config.webdav.cleanup_mode = validate_cleanup_mode(webdav_overrides.get("cleanup_mode"))
 
         if str(getattr(config, "storage_mode", "local") or "local") == "webdav":
             if not str(getattr(getattr(config, "webdav", None), "base_url", "") or "").strip():

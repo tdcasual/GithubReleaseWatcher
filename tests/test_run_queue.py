@@ -40,10 +40,49 @@ class RunQueueServiceTests(unittest.TestCase):
         self.assertTrue(svc.enqueue(source="manual"))
         self.assertFalse(svc.enqueue(source="manual"))
 
+    def test_enqueue_result_deduplicates_same_request(self) -> None:
+        svc = RunQueueService(now_iso=_Now(), max_pending=4)
+
+        first = svc.enqueue_result(source="api", repo_key="owner/repo")
+        second = svc.enqueue_result(source="api", repo_key="owner/repo")
+
+        self.assertEqual(first["status"], "accepted")
+        self.assertTrue(first["queued"])
+        self.assertEqual(second["status"], "deduplicated")
+        self.assertFalse(second["queued"])
+
+    def test_enqueue_result_rejects_overflow(self) -> None:
+        svc = RunQueueService(now_iso=_Now(), max_pending=1)
+
+        first = svc.enqueue_result(source="api", repo_key="owner/repo")
+        second = svc.enqueue_result(source="api", repo_key="owner/another")
+
+        self.assertEqual(first["status"], "accepted")
+        self.assertEqual(second["status"], "rejected_overflow")
+        self.assertFalse(second["queued"])
+
+    def test_enqueue_result_allows_batch_and_single_mix(self) -> None:
+        svc = RunQueueService(now_iso=_Now(), max_pending=4)
+
+        batch = svc.enqueue_result(source="api", repo_keys=["owner/repo", "owner/another"])
+        single = svc.enqueue_result(source="api", repo_key="owner/repo")
+
+        self.assertEqual(batch["status"], "accepted")
+        self.assertEqual(single["status"], "accepted")
+
+        first = svc.queue.get_nowait()
+        second = svc.queue.get_nowait()
+        self.assertEqual(first.get("repo_keys"), ["owner/repo", "owner/another"])
+        self.assertIsNone(first.get("repo_key"))
+        self.assertEqual(second.get("repo_key"), "owner/repo")
+        self.assertIsNone(second.get("repo_keys"))
+
     def test_begin_and_finish_run_updates_state(self) -> None:
         now = _Now()
         svc = RunQueueService(now_iso=now)
         self.assertTrue(svc.enqueue(source="manual", repo_keys=["owner/repo", "owner/another"]))
+        task = svc.try_pop_task(timeout=0.001)
+        self.assertIsNotNone(task)
 
         run_id = svc.begin_run()
 
