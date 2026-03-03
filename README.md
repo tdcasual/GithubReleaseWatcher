@@ -68,6 +68,18 @@ python3 watcher.py --config config.toml --web --web-host 127.0.0.1 --web-port 80
 python3 watcher.py --config config.toml --web --no-ui
 ```
 
+启动 V2 FastAPI 服务（当前为骨架 API）：
+
+```bash
+python3 watcher.py --web-v2 --web-host 127.0.0.1 --web-port 8000
+```
+
+V2 当前已提供：
+
+- `GET /api/v2/health`
+- `POST /api/v2/jobs`
+- `GET /api/v2/jobs`
+
 主要 API：
 
 - `POST /api/v1/login`：登录（首次启动生成初始化口令并写入本地 bootstrap 凭据文件，成功后设置 Cookie 会话）
