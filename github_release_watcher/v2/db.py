@@ -6,15 +6,16 @@ from pathlib import Path
 JOB_STATUSES = ("queued", "running", "succeeded", "failed", "canceled")
 
 
-def _connect(db_path: Path) -> sqlite3.Connection:
+def connect_db(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.row_factory = sqlite3.Row
     return conn
 
 
 def init_db(db_path: Path) -> None:
-    conn = _connect(db_path)
+    conn = connect_db(db_path)
     try:
         conn.executescript(
             """
@@ -45,9 +46,21 @@ def init_db(db_path: Path) -> None:
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS sessions (
+                token TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                expires_at REAL NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             """
         )
         conn.commit()
     finally:
         conn.close()
-

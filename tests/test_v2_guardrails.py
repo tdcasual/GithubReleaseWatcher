@@ -27,6 +27,6 @@ def test_v2_job_response_does_not_include_v1_queue_status_field() -> None:
         assert "queue_status" not in payload
 
 
-def test_ci_includes_v2_guardrail_step() -> None:
+def test_ci_includes_legacy_block_step() -> None:
     ci = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
-    assert "Block v2 compatibility regressions" in ci
+    assert "Block legacy runtime tokens" in ci

@@ -1,9 +1,0 @@
-{
-  "mode": "str",
-  "repos": [],
-  "totals": {
-    "upload_queue_depth": "int",
-    "upload_retry_total": "int",
-    "upload_verify_failed_total": "int"
-  }
-}

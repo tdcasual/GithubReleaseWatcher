@@ -24,6 +24,8 @@ class V2DatabaseBootstrapTests(unittest.TestCase):
                 self.assertIn("repos", tables)
                 self.assertIn("jobs", tables)
                 self.assertIn("events", tables)
+                self.assertIn("sessions", tables)
+                self.assertIn("app_settings", tables)
 
                 conn.execute(
                     "INSERT INTO jobs(id, kind, status, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",

@@ -1,11 +1,10 @@
 [project]
 name = "github-release-watcher"
-version = "0.1.0"
-description = "GitHub Release 监控与自动备份工具（纯 Python 下载）"
+version = "0.2.0"
+description = "GitHub Release Watcher V2"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-  "requests>=2.31.0",
   "fastapi>=0.110.0",
   "uvicorn>=0.30.0",
 ]
@@ -21,4 +20,4 @@ build-backend = "setuptools.build_meta"
 packages = ["github_release_watcher"]
 
 [tool.setuptools.package-data]
-github_release_watcher = ["static/*"]
+github_release_watcher = []

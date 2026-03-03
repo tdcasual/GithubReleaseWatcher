@@ -23,3 +23,5 @@ test_state.json
 
 test_downloads/
 artifacts/manual-qa/
+v2.sqlite3
+frontend/node_modules/

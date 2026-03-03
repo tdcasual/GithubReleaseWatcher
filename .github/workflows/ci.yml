@@ -24,8 +24,8 @@ jobs:
       - name: Install package
         run: python -m pip install -e .
 
-      - name: Run stable Python test suite
-        run: python -m pytest -q -k "not download_integration"
+      - name: Run Python test suite
+        run: python -m pytest -q
 
       - name: Block tracked local artifacts
         run: |
@@ -37,19 +37,21 @@ jobs:
             exit 1
           fi
 
-      - name: Block v2 compatibility regressions
+      - name: Block legacy runtime tokens
         run: |
-          if rg -n '/api/v1/' github_release_watcher/v2 tests/test_v2_* 2>/dev/null; then
-            echo "Detected v1 API path in v2 scope."
-            exit 1
-          fi
-          if rg -n 'queue_status' github_release_watcher/v2 tests/test_v2_* 2>/dev/null; then
-            echo "Detected v1 compatibility field 'queue_status' in v2 scope."
+          if rg -n '/api/v1|window\.GRW' github_release_watcher deploy README.md; then
+            echo "Legacy token found"
             exit 1
           fi
 
-      - name: Validate frontend scripts
+      - name: Frontend tests and build
         run: |
-          for action in github_release_watcher/static/*.js deploy/vercel/public/*.js; do
-            node --check "$action"
+          npm --prefix frontend install
+          npm --prefix frontend test
+          npm --prefix frontend run build
+
+      - name: Validate deploy proxy scripts
+        run: |
+          for f in deploy/vercel/api/v2/*.js deploy/cloudflare-worker/src/*.js; do
+            node --check "$f"
           done
