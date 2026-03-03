@@ -4,8 +4,19 @@ from pathlib import Path
 
 
 def test_repo_disallows_api_v1_and_window_grw_strings() -> None:
-    roots = [Path("github_release_watcher"), Path("deploy"), Path("scripts"), Path("README.md")]
-    banned = ["/api/v1", "window.GRW", "github_release_watcher.webapp"]
+    roots = [Path("github_release_watcher"), Path("deploy"), Path("scripts"), Path("docs/plans"), Path("README.md")]
+    banned = [
+        "/api/v1",
+        "window.GRW",
+        "github_release_watcher.webapp",
+        "github_release_watcher.config",
+        "github_release_watcher.downloader",
+        "github_release_watcher.webdav",
+        "github_release_watcher.metrics",
+        "github_release_watcher.logging_setup",
+        "github_release_watcher.github",
+        "github_release_watcher.config_validation",
+    ]
     hits: list[tuple[str, str]] = []
     for root in roots:
         files = [root] if root.is_file() else [p for p in root.rglob("*") if p.is_file()]

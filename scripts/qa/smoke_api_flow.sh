@@ -17,7 +17,10 @@ from github_release_watcher.v2.app import create_app
 
 with tempfile.TemporaryDirectory() as td:
     db_path = Path(td) / "v2.sqlite3"
-    client = TestClient(create_app(db_path=db_path, auth_username="tester", auth_password="pass"))
+    client = TestClient(
+        create_app(db_path=db_path, auth_username="tester", auth_password="pass"),
+        base_url="https://testserver",
+    )
 
     health = client.get("/api/v2/health")
     assert health.status_code == 200, health.text

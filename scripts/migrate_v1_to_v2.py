@@ -83,6 +83,10 @@ def _settings_from_config(config: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _stable_invalid_repo_keys(keys: list[str]) -> list[str]:
+    return sorted({str(key).strip() for key in keys if str(key).strip()})
+
+
 def run_import(*, config_path: Path, state_path: Path, db_path: Path, report_path: Path) -> None:
     config = _load_toml(config_path)
     state = _load_json(state_path)
@@ -115,6 +119,7 @@ def run_import(*, config_path: Path, state_path: Path, db_path: Path, report_pat
         key_text = str(key).strip()
         if key_text and key_text not in state_repo_keys:
             invalid_repo_keys.append(key_text)
+    invalid_repo_keys = _stable_invalid_repo_keys(invalid_repo_keys)
 
     all_repo_keys = sorted(state_repo_keys | set(config_repo_map.keys()))
     now = _now_iso()
