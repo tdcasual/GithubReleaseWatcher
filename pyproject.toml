@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "GitHub Release 监控与自动备份工具（纯 Python 下载）"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["requests>=2.31.0"]
+dependencies = [
+  "requests>=2.31.0",
+  "fastapi>=0.110.0",
+  "uvicorn>=0.30.0",
+]
 
 [project.scripts]
 github-release-watcher = "github_release_watcher.cli:main"

@@ -19,6 +19,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-level", default="INFO", help="Logging level (e.g. DEBUG, INFO, WARNING).")
 
     parser.add_argument("--web", action="store_true", help="Start built-in web API server (and optional UI).")
+    parser.add_argument("--web-v2", action="store_true", help="Start V2 FastAPI server.")
     parser.add_argument("--web-host", default="127.0.0.1", help="Web server bind host (default: 127.0.0.1).")
     parser.add_argument("--web-port", type=int, default=8000, help="Web server port (default: 8000).")
     parser.add_argument("--no-ui", action="store_true", help="Disable the built-in web UI (API still available).")
@@ -31,6 +32,20 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run_web_v2(*, host: str, port: int, log_level: str) -> int:
+    from .v2.app import create_app
+
+    app = create_app()
+    try:
+        import uvicorn  # type: ignore
+    except Exception as exc:
+        logging.error("V2 web server requires uvicorn: %s", exc)
+        return 2
+
+    uvicorn.run(app, host=str(host), port=int(port), log_level=str(log_level).lower())
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -40,6 +55,13 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(message)s",
     )
     ensure_rotating_file_logging(default_log_path(args.config), level=getattr(logging, str(args.log_level).upper(), logging.INFO))
+
+    if args.web_v2:
+        return _run_web_v2(
+            host=str(args.web_host),
+            port=int(args.web_port),
+            log_level=str(args.log_level).upper(),
+        )
 
     if args.web:
         from .webapp import serve

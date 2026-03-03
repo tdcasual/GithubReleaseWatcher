@@ -37,6 +37,17 @@ jobs:
             exit 1
           fi
 
+      - name: Block v2 compatibility regressions
+        run: |
+          if rg -n '/api/v1/' github_release_watcher/v2 tests/test_v2_* 2>/dev/null; then
+            echo "Detected v1 API path in v2 scope."
+            exit 1
+          fi
+          if rg -n 'queue_status' github_release_watcher/v2 tests/test_v2_* 2>/dev/null; then
+            echo "Detected v1 compatibility field 'queue_status' in v2 scope."
+            exit 1
+          fi
+
       - name: Validate frontend scripts
         run: |
           for action in github_release_watcher/static/*.js deploy/vercel/public/*.js; do
