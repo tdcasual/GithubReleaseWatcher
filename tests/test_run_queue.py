@@ -15,13 +15,14 @@ class _Now:
 
 
 class RunQueueServiceTests(unittest.TestCase):
-    def test_enqueue_creates_task_and_pending_run(self) -> None:
+    def test_enqueue_result_creates_task_and_pending_run(self) -> None:
         now = _Now()
         svc = RunQueueService(now_iso=now)
 
-        queued = svc.enqueue(source="api", repo_key="owner/repo")
+        result = svc.enqueue_result(source="api", repo_key="owner/repo")
 
-        self.assertTrue(queued)
+        self.assertEqual(result["status"], "accepted")
+        self.assertNotIn("queued", result)
         task = svc.queue.get_nowait()
         self.assertEqual(task.get("type"), "run_once")
         self.assertEqual(task.get("repo_key"), "owner/repo")
@@ -34,12 +35,6 @@ class RunQueueServiceTests(unittest.TestCase):
         self.assertEqual(snap["last"]["queued_at"], "2026-03-02T00:00:01+00:00")
         self.assertIsNone(snap["last"]["started_at"])
 
-    def test_enqueue_returns_false_when_run_already_requested(self) -> None:
-        svc = RunQueueService(now_iso=_Now())
-
-        self.assertTrue(svc.enqueue(source="manual"))
-        self.assertFalse(svc.enqueue(source="manual"))
-
     def test_enqueue_result_deduplicates_same_request(self) -> None:
         svc = RunQueueService(now_iso=_Now(), max_pending=4)
 
@@ -47,9 +42,9 @@ class RunQueueServiceTests(unittest.TestCase):
         second = svc.enqueue_result(source="api", repo_key="owner/repo")
 
         self.assertEqual(first["status"], "accepted")
-        self.assertTrue(first["queued"])
         self.assertEqual(second["status"], "deduplicated")
-        self.assertFalse(second["queued"])
+        self.assertNotIn("queued", first)
+        self.assertNotIn("queued", second)
 
     def test_enqueue_result_rejects_overflow(self) -> None:
         svc = RunQueueService(now_iso=_Now(), max_pending=1)
@@ -59,7 +54,8 @@ class RunQueueServiceTests(unittest.TestCase):
 
         self.assertEqual(first["status"], "accepted")
         self.assertEqual(second["status"], "rejected_overflow")
-        self.assertFalse(second["queued"])
+        self.assertNotIn("queued", first)
+        self.assertNotIn("queued", second)
 
     def test_enqueue_result_allows_batch_and_single_mix(self) -> None:
         svc = RunQueueService(now_iso=_Now(), max_pending=4)
@@ -80,7 +76,10 @@ class RunQueueServiceTests(unittest.TestCase):
     def test_begin_and_finish_run_updates_state(self) -> None:
         now = _Now()
         svc = RunQueueService(now_iso=now)
-        self.assertTrue(svc.enqueue(source="manual", repo_keys=["owner/repo", "owner/another"]))
+        self.assertEqual(
+            svc.enqueue_result(source="manual", repo_keys=["owner/repo", "owner/another"])["status"],
+            "accepted",
+        )
         task = svc.try_pop_task(timeout=0.001)
         self.assertIsNotNone(task)
 

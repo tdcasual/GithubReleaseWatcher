@@ -123,3 +123,36 @@ def test_get_repo_activity_and_releases_are_filtered_and_sorted() -> None:
         releases = svc.get_repo_releases(config=cfg, repo_key="owner/repo", limit=10)
         assert [item["tag"] for item in releases] == ["v2.0.0", "v1.0.0"]
         assert releases[0]["downloaded_assets_count"] == 2
+
+
+def test_repo_query_methods_accept_explicit_state_snapshot() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        cfg = _write_config(base)
+        cfg.state_file.unlink(missing_ok=True)
+        state = {
+            "version": 2,
+            "repos": {
+                "owner/repo": {
+                    "stats": {"current_tag": "v3.0.0"},
+                    "activity": [{"time": "2026-01-01T00:00:00+00:00", "type": "download"}],
+                    "releases": {"v3.0.0": {"published_at": "2026-03-01T00:00:00+00:00", "downloaded_assets": ["asset.bin"]}},
+                }
+            },
+        }
+
+        svc = _service()
+        items = svc.list_repo_summaries(config=cfg, next_runs={}, scheduler_enabled=False, state=state)
+        by_key = {item["key"]: item for item in items}
+        assert by_key["owner/repo"]["downloaded_releases_total"] == 1
+
+        summary = svc.get_repo_summary(config=cfg, repo_key="owner/repo", next_run_at=None, state=state)
+        assert summary["stats"]["current_tag"] == "v3.0.0"
+
+        activity = svc.get_repo_activity(config=cfg, repo_key="owner/repo", limit=10, state=state)
+        assert len(activity) == 1
+        assert activity[0]["type"] == "download"
+
+        releases = svc.get_repo_releases(config=cfg, repo_key="owner/repo", limit=10, state=state)
+        assert len(releases) == 1
+        assert releases[0]["tag"] == "v3.0.0"

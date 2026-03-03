@@ -272,7 +272,6 @@ def handle_api_request(request_handler, path: str, split) -> None:
             return
         request_handler._send_json(
             {
-                "queued": bool(run_result.get("queued")),
                 "queue_status": str(run_result.get("status") or "accepted"),
                 "status": request_handler.server.app.snapshot()["run"]["last"],
             }

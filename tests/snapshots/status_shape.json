@@ -84,6 +84,7 @@
     "repos_scheduled": "int"
   },
   "security": {
+    "bootstrap_credentials_file": "NoneType",
     "must_change_password": "bool"
   },
   "started_at": "str"

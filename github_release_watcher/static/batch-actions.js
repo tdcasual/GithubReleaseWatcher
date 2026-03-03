@@ -3,6 +3,7 @@
     const getSelectedRepoKeys = deps.getSelectedRepoKeys;
     const setBatchActionHint = deps.setBatchActionHint;
     const toast = deps.toast;
+    const queueStatusFeedback = deps.queueStatusFeedback;
     const repoDraft = deps.repoDraft;
     const setDirty = deps.setDirty;
     const renderRepos = deps.renderRepos;
@@ -71,11 +72,17 @@
           toast(msg, "bad");
           return;
         }
-        const msg = res.queued
-          ? `批量检查已入队：${runnableSelected.length} 个仓库。${skippedSuffix}`
-          : "已有任务在运行或队列中，本次批量请求未入队。";
-        setBatchActionHint(msg, "");
-        toast(msg, res.queued ? "ok" : "warn");
+        const feedback = queueStatusFeedback(res.queue_status);
+        let msg = feedback.message;
+        if (feedback.status === "accepted") {
+          msg = `批量检查已入队：${runnableSelected.length} 个仓库。${skippedSuffix}`;
+        } else if (feedback.status === "deduplicated") {
+          msg = "已有任务在运行或队列中，本次批量请求被去重。";
+        } else if (feedback.status === "rejected_overflow") {
+          msg = "运行队列已满，批量请求被拒绝，请稍后重试。";
+        }
+        setBatchActionHint(msg, feedback.tone === "bad" ? "danger" : "");
+        toast(msg, feedback.tone);
       } catch (e) {
         const msg = `批量触发失败：${formatError(e)}`;
         setBatchActionHint(msg, "danger");

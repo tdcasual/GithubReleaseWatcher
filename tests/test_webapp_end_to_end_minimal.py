@@ -91,7 +91,7 @@ def test_minimal_api_end_to_end_flow() -> None:
             run_code, run_payload, _ = _json_request(conn, method="POST", path="/api/v1/run", token=token, payload={})
             assert run_code == 200
             assert run_payload.get("queue_status") == "accepted"
-            assert run_payload.get("queued") is True
+            assert "queued" not in run_payload
 
             repos_code, repos_payload, _ = _json_request(conn, method="GET", path="/api/v1/repos", token=token)
             assert repos_code == 200

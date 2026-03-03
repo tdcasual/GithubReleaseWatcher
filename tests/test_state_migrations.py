@@ -67,6 +67,8 @@ def test_load_state_falls_back_when_version_is_not_migratable() -> None:
         state = load_state(state_path)
 
         assert state == {"version": STATE_VERSION, "repos": {}}
+        backups = list(Path(td).glob("state.json.unmigratable-*"))
+        assert len(backups) == 1
 
 
 def test_migrate_state_raises_for_unknown_path() -> None:

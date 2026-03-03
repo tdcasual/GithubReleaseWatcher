@@ -50,10 +50,6 @@ class RunQueueService:
             return f"repo:{repo_key}"
         return "all"
 
-    def enqueue(self, *, source: str, repo_key: str | None = None, repo_keys: list[str] | None = None) -> bool:
-        result = self.enqueue_result(source=source, repo_key=repo_key, repo_keys=repo_keys)
-        return bool(result.get("queued"))
-
     def enqueue_result(
         self,
         *,
@@ -66,12 +62,12 @@ class RunQueueService:
             if request_key in self._pending_keys or request_key == self._dequeued_key or request_key == self._run_in_progress_key:
                 if self._metrics is not None:
                     self._metrics.inc_queue_deduplicated()
-                return {"queued": False, "status": "deduplicated"}
+                return {"status": "deduplicated"}
 
             if len(self._pending_keys) >= self._max_pending:
                 if self._metrics is not None:
                     self._metrics.inc_queue_rejected()
-                return {"queued": False, "status": "rejected_overflow"}
+                return {"status": "rejected_overflow"}
 
             self._run_requested = True
             if self._metrics is not None:
@@ -98,7 +94,7 @@ class RunQueueService:
                 "exit_code": None,
                 "error": None,
             }
-            return {"queued": True, "status": "accepted"}
+            return {"status": "accepted"}
 
     def try_pop_task(self, *, timeout: float = 0.5) -> dict[str, Any] | None:
         try:
