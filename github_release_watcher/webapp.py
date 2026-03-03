@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 from .auth_service import AuthService, _default_auth_config, _load_auth_config, _pbkdf2_hash, _verify_password
 from .config import AppConfig, ConfigError, RepoConfig, WebDAVConfig, load_config
 from .github import parse_repo_spec
+from .metrics import MetricsRegistry
 from .run_queue import RunQueueService
 from .scheduler import SchedulerService
 from .settings_service import SettingsService
@@ -186,10 +187,11 @@ class WatcherService:
 
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
-        self._run_queue = RunQueueService(lock=self._lock, now_iso=_utc_now_iso)
+        self._metrics = MetricsRegistry()
+        self._run_queue = RunQueueService(lock=self._lock, now_iso=_utc_now_iso, metrics=self._metrics)
         # Backward compatibility for tests and internal references.
         self._queue = self._run_queue.queue
-        self._scheduler_service = SchedulerService()
+        self._scheduler_service = SchedulerService(metrics=self._metrics)
         self._settings_service = SettingsService()
 
         self._started_at = _utc_now_iso()
@@ -375,6 +377,9 @@ class WatcherService:
                 else:
                     self._scheduler_service.sync_schedule(self._config)
 
+    def record_api_request(self, latency_ms: float) -> None:
+        self._metrics.record_api_request(latency_ms)
+
     def update_settings(self, payload: dict[str, Any]) -> None:
         overrides = _read_json_file(self._overrides_path)
 
@@ -416,6 +421,7 @@ class WatcherService:
                     "base_interval_seconds": base_interval_seconds,
                     "repos_scheduled": repos_scheduled,
                 },
+                "metrics": self._metrics.snapshot(),
                 "run": run_snapshot,
                 "config": _public_config(config) if config is not None else None,
             }
@@ -1078,7 +1084,12 @@ class Handler(BaseHTTPRequestHandler):
         path = split.path
 
         if path.startswith("/api/v1/"):
-            self._handle_api(path, split)
+            started = time.perf_counter()
+            try:
+                self._handle_api(path, split)
+            finally:
+                elapsed_ms = (time.perf_counter() - started) * 1000.0
+                self.server.app.record_api_request(elapsed_ms)
             return
 
         if not self.server.ui:

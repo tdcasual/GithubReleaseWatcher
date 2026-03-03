@@ -51,6 +51,13 @@
   "config_path": "str",
   "last_config_reload_at": "str",
   "log_file": "NoneType",
+  "metrics": {
+    "api_last_latency_ms": "float",
+    "api_request_total": "int",
+    "queue_enqueue_total": "int",
+    "queue_rejected_total": "int",
+    "scheduler_lag_seconds": "float"
+  },
   "overrides_path": "str",
   "run": {
     "in_progress": "bool",

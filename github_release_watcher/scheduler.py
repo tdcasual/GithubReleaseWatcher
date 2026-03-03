@@ -5,6 +5,7 @@ import time
 from typing import Any, Callable
 
 from .config import AppConfig
+from .metrics import MetricsRegistry
 from .webapp_overrides import _repo_key_from_spec
 
 
@@ -14,9 +15,11 @@ class SchedulerService:
         *,
         now_seconds: Callable[[], float] | None = None,
         rng: random.Random | None = None,
+        metrics: MetricsRegistry | None = None,
     ):
         self._now_seconds = now_seconds or time.time
         self._rng = rng or random.Random()
+        self._metrics = metrics
         self._enabled = True
         self._next_run_at: float | None = None
         self._repo_next_run_at: dict[str, float] = {}
@@ -105,9 +108,13 @@ class SchedulerService:
     def poll_due_repo(self, *, now: float, run_busy: bool) -> tuple[str | None, float | None]:
         if not self._enabled or not self._repo_next_run_at:
             self._next_run_at = None
+            if self._metrics is not None:
+                self._metrics.set_scheduler_lag_seconds(0.0)
             return None, None
 
         next_run = min(self._repo_next_run_at.values())
+        if self._metrics is not None:
+            self._metrics.set_scheduler_lag_seconds(max(0.0, float(now - next_run)))
         due_repo: str | None = None
         if not run_busy:
             for key, ts in self._repo_next_run_at.items():

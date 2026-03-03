@@ -5,6 +5,8 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Callable
 
+from .metrics import MetricsRegistry
+
 
 def _utc_now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
@@ -16,9 +18,11 @@ class RunQueueService:
         *,
         lock: threading.RLock | None = None,
         now_iso: Callable[[], str] | None = None,
+        metrics: MetricsRegistry | None = None,
     ):
         self._lock = lock if lock is not None else threading.RLock()
         self._now_iso = now_iso or _utc_now_iso
+        self._metrics = metrics
         self._queue: queue.Queue[dict[str, Any]] = queue.Queue()
         self._run_requested = False
         self._run_in_progress = False
@@ -32,9 +36,13 @@ class RunQueueService:
     def enqueue(self, *, source: str, repo_key: str | None = None, repo_keys: list[str] | None = None) -> bool:
         with self._lock:
             if self._run_requested or self._run_in_progress:
+                if self._metrics is not None:
+                    self._metrics.inc_queue_rejected()
                 return False
 
             self._run_requested = True
+            if self._metrics is not None:
+                self._metrics.inc_queue_enqueue()
             task: dict[str, Any] = {"type": "run_once"}
             if repo_keys is not None:
                 task["repo_keys"] = list(repo_keys)
