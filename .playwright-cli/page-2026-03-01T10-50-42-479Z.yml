@@ -1,0 +1,146 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: Release Watcher
+        - generic [ref=e8]: GitHub Release 监控与备份
+      - generic [ref=e9]:
+        - generic [ref=e10]: 需先改密
+        - button "立即检查" [ref=e11] [cursor=pointer]
+        - button "设置" [ref=e12] [cursor=pointer]
+        - generic [ref=e13]:
+          - generic [ref=e14]: admin
+          - button "退出" [ref=e15] [cursor=pointer]
+    - main [ref=e16]:
+      - status [ref=e102]:
+        - generic [ref=e103]: 安全限制：当前账号需先修改密码，创建/更新类操作会被拒绝。
+        - button "立即改密" [ref=e104] [cursor=pointer]
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - generic [ref=e19]:
+            - heading "运行状态" [level=2] [ref=e20]
+            - paragraph [ref=e21]: 可手动触发或按间隔自动轮询。偶发错误会记录但不会停止服务。
+          - button "重新加载配置" [ref=e23] [cursor=pointer]
+        - generic [ref=e24]:
+          - generic [ref=e25]:
+            - generic [ref=e26]: 自动轮询
+            - generic [ref=e28]:
+              - checkbox "自动轮询开关" [checked]
+          - generic [ref=e30]:
+            - generic [ref=e31]: 基础间隔
+            - generic [ref=e33]:
+              - spinbutton [ref=e34]: "0.1667"
+              - generic [ref=e35]: 小时
+          - generic [ref=e36]:
+            - generic [ref=e37]: 最近下次检查
+            - generic [ref=e38]: 3/1/2026, 6:51:09 PM
+          - generic [ref=e39]:
+            - generic [ref=e40]: 上次执行
+            - generic [ref=e41]: 3/1/2026, 6:50:09 PM
+          - generic [ref=e42]:
+            - generic [ref=e43]: 上次执行范围
+            - generic [ref=e44]: 单仓库：mihomo-party-org/clash-party · 来源：调度
+        - generic [ref=e46]:
+          - generic [ref=e47]:
+            - generic [ref=e48]: 保留最近 N 个 Release
+            - generic [ref=e49]:
+              - spinbutton "保留最近 N 个 Release" [ref=e50]: "1"
+              - generic [ref=e51]: （1 表示仅保留最新一次发布）
+          - button "保存更改" [disabled] [ref=e53]
+        - paragraph [ref=e105]: 配置文件：config.toml（覆盖文件：config.override.json） · 调度：按仓库自适应 · 安全提示：请先修改默认登录密码
+      - generic [ref=e54]:
+        - generic [ref=e55]:
+          - generic [ref=e56]:
+            - heading "仓库与资产规则" [level=2] [ref=e57]
+            - paragraph [ref=e58]: 选择需要保存的发布类型（如 exe、apk），以及每个仓库的保留数量。
+          - generic [ref=e59]:
+            - generic [ref=e60]:
+              - textbox "搜索仓库" [ref=e61]:
+                - /placeholder: 搜索 owner/repo
+              - combobox "状态筛选" [ref=e62]:
+                - option "全部状态" [selected]
+                - option "仅启用"
+                - option "仅停用"
+                - option "仅异常"
+                - option "仅网络异常"
+                - option "仅缓存异常"
+              - combobox "排序" [ref=e63]:
+                - option "默认排序" [selected]
+                - option "错误优先"
+                - option "下次检查时间"
+            - button "添加仓库" [ref=e64] [cursor=pointer]
+        - group "仓库批量操作工具栏" [ref=e65]:
+          - generic [ref=e66]: 已选 0 个仓库（当前筛选 1 个，可检查 0 个）
+          - button "全选当前筛选" [ref=e67] [cursor=pointer]
+          - button "反选当前筛选" [ref=e68] [cursor=pointer]
+          - button "选中启用仓库" [ref=e69] [cursor=pointer]
+          - button "选中异常仓库" [ref=e70] [cursor=pointer]
+          - button "选中缓存异常" [disabled] [ref=e71]
+          - button "批量检查" [disabled] [ref=e72]
+          - button "批量启用" [disabled] [ref=e73]
+          - button "批量停用" [disabled] [ref=e74]
+          - button "清空选择" [disabled] [ref=e75]
+        - status
+        - generic [ref=e107]:
+          - generic [ref=e108]:
+            - generic [ref=e110]:
+              - generic [ref=e111]: mihomo-party-org/clash-party
+              - generic [ref=e112]: https://github.com/mihomo-party-org/clash-party
+              - generic [ref=e113]: 状态：网络错误 · 当前：v1.9.1 · 版本：1 · 资产：0 · 删除：0 · 更新约：16小时52分钟 · 检查约：18小时34分钟 · 下次：0分钟
+            - generic [ref=e114]:
+              - generic [ref=e115]:
+                - checkbox "选择仓库 mihomo-party-org/clash-party" [ref=e116]
+                - generic [ref=e117]: 选中
+              - button "查看仓库 mihomo-party-org/clash-party 活动" [ref=e118] [cursor=pointer]: 活动
+              - button "检查仓库 mihomo-party-org/clash-party" [ref=e119] [cursor=pointer]: 检查
+              - generic [ref=e120]:
+                - generic [ref=e121]: 启用
+                - generic [ref=e122]:
+                  - checkbox "启用仓库 mihomo-party-org/clash-party" [checked]
+          - generic [ref=e124]:
+            - generic [ref=e125]:
+              - generic [ref=e126]: 保留最近 N 个（留空表示使用全局）
+              - spinbutton "仓库 mihomo-party-org/clash-party 保留最近 N 个版本" [ref=e127]: "1"
+            - generic [ref=e128]:
+              - generic [ref=e129]: 保存哪些发布资产（按类型后缀）
+              - generic [ref=e130]:
+                - generic [ref=e131]:
+                  - checkbox "Windows (.exe)" [checked] [ref=e132]
+                  - generic [ref=e133]: Windows (.exe)
+                - generic [ref=e134]:
+                  - checkbox "Android (.apk)" [checked] [ref=e135]
+                  - generic [ref=e136]: Android (.apk)
+                - generic [ref=e137]:
+                  - checkbox "ZIP (.zip)" [ref=e138]
+                  - generic [ref=e139]: ZIP (.zip)
+                - generic [ref=e140]:
+                  - checkbox "tar.gz" [ref=e141]
+                  - generic [ref=e142]: tar.gz
+                - generic [ref=e143]:
+                  - checkbox "macOS (.dmg)" [ref=e144]
+                  - generic [ref=e145]: macOS (.dmg)
+                - generic [ref=e146]:
+                  - checkbox "Linux (.deb)" [ref=e147]
+                  - generic [ref=e148]: Linux (.deb)
+                - generic [ref=e149]:
+                  - checkbox "Linux (.rpm)" [ref=e150]
+                  - generic [ref=e151]: Linux (.rpm)
+              - generic [ref=e152]:
+                - textbox "仓库 mihomo-party-org/clash-party 添加自定义类型" [ref=e153]:
+                  - /placeholder: "自定义类型，如: msi"
+                - button "添加" [ref=e154] [cursor=pointer]
+          - paragraph [ref=e155]: 提示：asset_types 会与 include_assets/exclude_assets 正则叠加生效；需要更精细匹配可直接编辑 config.toml 或通过 API settings 更新正则。
+        - status [ref=e156]: （共 1）
+      - generic [ref=e76]:
+        - generic [ref=e77]:
+          - generic [ref=e78]:
+            - heading "活动" [level=2] [ref=e79]
+            - paragraph [ref=e80]: 仅展示关键动作：下载/清理。完整日志写入文件。
+          - button "复制活动" [ref=e82] [cursor=pointer]
+        - status [ref=e157]: 日志文件：/Users/lvxiaoer/Documents/GithubReleaseWatcher/watcher.log
+        - generic [ref=e83]: 3/1/2026, 6:50:27 PM mihomo-party-org/clash-party v1.9.1 下载失败：clash-party-windows-1.9.1-ia32-setup.exe
+    - contentinfo [ref=e85]:
+      - generic [ref=e86]:
+        - text: "API:"
+        - code [ref=e87]: /api/v1
+  - status [ref=e158]: 请先在设置中修改默认账号密码。

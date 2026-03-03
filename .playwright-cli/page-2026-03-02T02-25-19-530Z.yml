@@ -1,0 +1,102 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link "← 返回" [ref=e5] [cursor=pointer]:
+        - /url: /
+      - generic [ref=e6]:
+        - generic [ref=e7]: mihomo-party-org/clash-party
+        - generic [ref=e8]: 活动与统计
+    - generic [ref=e9]:
+      - generic [ref=e10]: 需先改密
+      - button "立即检查" [ref=e11] [cursor=pointer]
+  - main [ref=e12]:
+    - status [ref=e13]:
+      - text: 安全限制：当前账号需先修改密码，POST/PUT 操作将被拒绝。
+      - link "前往主页设置" [ref=e14] [cursor=pointer]:
+        - /url: /
+      - text: 。
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - heading "概览" [level=2] [ref=e18]
+          - paragraph [ref=e19]: 当前版本、检查计划、下载/清理统计。
+        - generic [ref=e20]:
+          - button "折叠" [expanded] [ref=e21] [cursor=pointer]
+          - button "复制摘要" [ref=e22] [cursor=pointer]
+          - button "复制诊断包" [ref=e23] [cursor=pointer]
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - generic [ref=e26]:
+            - generic [ref=e27]: 当前版本
+            - generic [ref=e28]: v1.9.1
+          - generic [ref=e29]:
+            - generic [ref=e30]: 下次检查
+            - generic [ref=e31]: 3/2/2026, 7:46:08 PM
+          - generic [ref=e32]:
+            - generic [ref=e33]: 上次检查
+            - generic [ref=e34]: 3/2/2026, 1:11:59 AM
+          - generic [ref=e35]:
+            - generic [ref=e36]: 推荐检查间隔
+            - generic [ref=e37]: 18小时34分钟
+        - generic [ref=e39]:
+          - generic [ref=e40]:
+            - generic [ref=e41]: 检查次数
+            - generic [ref=e42]: "5"
+          - generic [ref=e43]:
+            - generic [ref=e44]: 网络失败次数
+            - generic [ref=e45]: "3"
+          - generic [ref=e46]:
+            - generic [ref=e47]: 下载次数（资产）
+            - generic [ref=e48]: "12"
+          - generic [ref=e49]:
+            - generic [ref=e50]: 删除旧版本次数
+            - generic [ref=e51]: "0"
+          - generic [ref=e52]:
+            - generic [ref=e53]: 已保存版本数
+            - generic [ref=e54]: "1"
+          - generic [ref=e55]:
+            - generic [ref=e56]: 下载失败次数
+            - generic [ref=e57]: "31"
+          - generic [ref=e58]:
+            - generic [ref=e59]: 上传重试次数
+            - generic [ref=e60]: "0"
+          - generic [ref=e61]:
+            - generic [ref=e62]: 上传校验失败
+            - generic [ref=e63]: "0"
+          - generic [ref=e64]:
+            - generic [ref=e65]: 上传队列深度
+            - generic [ref=e66]: "0"
+          - generic [ref=e67]:
+            - generic [ref=e68]: 检查成功率
+            - generic [ref=e69]: 20.0% (1/5)
+          - generic [ref=e70]:
+            - generic [ref=e71]: 下载成功率
+            - generic [ref=e72]: 27.9% (12/43)
+        - status [ref=e73]: 更新频率统计：median=16小时52分钟，mean=5天3小时（样本 101）。
+        - status [ref=e74]: 上传健康：重试 0，校验失败 0，队列 0
+        - status
+        - alert
+    - generic [ref=e75]:
+      - generic [ref=e76]:
+        - generic [ref=e77]:
+          - heading "版本" [level=2] [ref=e78]
+          - paragraph [ref=e79]: 已保存的 Release 版本（来自 state.json）。
+        - generic [ref=e80]:
+          - button "折叠" [expanded] [ref=e81] [cursor=pointer]
+          - button "复制版本列表" [ref=e82] [cursor=pointer]
+      - generic [ref=e83]:
+        - status [ref=e84]: 已记录版本：1
+        - generic [ref=e85]: v1.9.1 · 资产:20 · 发布:1/16/2026, 12:49:50 AM · 处理:3/2/2026, 1:11:59 AM
+    - generic [ref=e86]:
+      - generic [ref=e87]:
+        - generic [ref=e88]:
+          - heading "活动" [level=2] [ref=e89]
+          - paragraph [ref=e90]: 下载/清理/检查事件（每仓库独立记录）。
+        - generic [ref=e91]:
+          - button "折叠" [expanded] [ref=e92] [cursor=pointer]
+          - button "复制活动" [ref=e93] [cursor=pointer]
+      - generic [ref=e95]: "3/1/2026, 5:47:48 PM check_start mihomo-party-org/clash-party 开始检查 3/1/2026, 5:47:53 PM check_error GitHub API error 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:49:10 PM check_start mihomo-party-org/clash-party 开始检查 3/1/2026, 5:49:15 PM new_release [v1.9.1] 发现新版本：v1.9.1 3/1/2026, 5:49:30 PM download_error [v1.9.1] clash-party-windows-1.9.1-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:49:44 PM download_error [v1.9.1] clash-party-windows-1.9.1-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:49:58 PM download_error [v1.9.1] mihomo-party-win7-1.9.0-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:50:13 PM download_error [v1.9.1] mihomo-party-win7-1.9.0-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:50:27 PM download_error [v1.9.1] mihomo-party-win7-1.9.1-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:50:42 PM download_error [v1.9.1] mihomo-party-win7-1.9.1-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:50:56 PM download_error [v1.9.1] mihomo-party-windows-1.9.0-arm64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:51:11 PM download_error [v1.9.1] mihomo-party-windows-1.9.0-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:51:25 PM download_error [v1.9.1] mihomo-party-windows-1.9.0-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:51:40 PM download_error [v1.9.1] mihomo-party-windows-1.9.1-arm64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:51:55 PM download_error [v1.9.1] mihomo-party-windows-1.9.1-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:52:09 PM download_error [v1.9.1] mihomo-party-windows-1.9.1-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 5:52:09 PM check_error mihomo-party-windows-1.9.1-x64-setup.exe: Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:50:09 PM check_start mihomo-party-org/clash-party 开始检查 3/1/2026, 6:50:27 PM download_error [v1.9.1] clash-party-windows-1.9.1-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:50:42 PM download_error [v1.9.1] clash-party-windows-1.9.1-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:50:56 PM download_error [v1.9.1] mihomo-party-win7-1.9.0-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:51:10 PM download_error [v1.9.1] mihomo-party-win7-1.9.0-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:51:25 PM download_error [v1.9.1] mihomo-party-win7-1.9.1-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:51:40 PM download_error [v1.9.1] mihomo-party-win7-1.9.1-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:51:54 PM download_error [v1.9.1] mihomo-party-windows-1.9.0-arm64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:52:09 PM download_error [v1.9.1] mihomo-party-windows-1.9.0-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:52:23 PM download_error [v1.9.1] mihomo-party-windows-1.9.0-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:52:38 PM download_error [v1.9.1] mihomo-party-windows-1.9.1-arm64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:52:52 PM download_error [v1.9.1] mihomo-party-windows-1.9.1-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:53:07 PM download_error [v1.9.1] mihomo-party-windows-1.9.1-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 6:53:07 PM check_error mihomo-party-windows-1.9.1-x64-setup.exe: Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 9:13:18 PM check_start mihomo-party-org/clash-party 开始检查 3/1/2026, 9:13:38 PM download [v1.9.1] 下载：clash-party-windows-1.9.1-ia32-setup.exe 3/1/2026, 9:13:53 PM download [v1.9.1] 下载：clash-party-windows-1.9.1-x64-setup.exe 3/1/2026, 9:14:09 PM download [v1.9.1] 下载：mihomo-party-win7-1.9.0-ia32-setup.exe 3/1/2026, 9:14:35 PM download [v1.9.1] 下载：mihomo-party-win7-1.9.0-x64-setup.exe 3/1/2026, 9:15:23 PM download [v1.9.1] 下载：mihomo-party-win7-1.9.1-ia32-setup.exe 3/1/2026, 9:15:38 PM download_error [v1.9.1] mihomo-party-win7-1.9.1-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 9:15:53 PM download_error [v1.9.1] mihomo-party-windows-1.9.0-arm64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 9:16:07 PM download_error [v1.9.1] mihomo-party-windows-1.9.0-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 9:16:22 PM download_error [v1.9.1] mihomo-party-windows-1.9.0-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 9:16:36 PM download_error [v1.9.1] mihomo-party-windows-1.9.1-arm64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 9:16:51 PM download_error [v1.9.1] mihomo-party-windows-1.9.1-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 9:17:05 PM download_error [v1.9.1] mihomo-party-windows-1.9.1-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/1/2026, 9:17:05 PM check_error mihomo-party-windows-1.9.1-x64-setup.exe: Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"} 3/2/2026, 1:07:04 AM check_start mihomo-party-org/clash-party 开始检查 3/2/2026, 1:07:21 AM download [v1.9.1] 下载：mihomo-party-win7-1.9.1-x64-setup.exe 3/2/2026, 1:07:39 AM download [v1.9.1] 下载：mihomo-party-windows-1.9.0-arm64-setup.exe 3/2/2026, 1:08:02 AM download [v1.9.1] 下载：mihomo-party-windows-1.9.0-ia32-setup.exe 3/2/2026, 1:09:01 AM download [v1.9.1] 下载：mihomo-party-windows-1.9.0-x64-setup.exe 3/2/2026, 1:10:02 AM download [v1.9.1] 下载：mihomo-party-windows-1.9.1-arm64-setup.exe 3/2/2026, 1:10:57 AM download [v1.9.1] 下载：mihomo-party-windows-1.9.1-ia32-setup.exe 3/2/2026, 1:11:59 AM download [v1.9.1] 下载：mihomo-party-windows-1.9.1-x64-setup.exe 3/2/2026, 1:11:59 AM check_ok 检查成功"
+  - contentinfo [ref=e96]:
+    - generic [ref=e97]:
+      - text: "API:"
+      - code [ref=e98]: /api/v1

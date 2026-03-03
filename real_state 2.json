@@ -1,0 +1,191 @@
+{
+  "repos": {
+    "mihomo-party-org/clash-party": {
+      "activity": [
+        {
+          "message": "mihomo-party-org/clash-party 开始检查",
+          "time": "2026-03-01T09:47:48.838093+00:00",
+          "type": "check_start"
+        },
+        {
+          "error_type": "other",
+          "message": "GitHub API error 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "time": "2026-03-01T09:47:53.664183+00:00",
+          "type": "check_error"
+        },
+        {
+          "message": "mihomo-party-org/clash-party 开始检查",
+          "time": "2026-03-01T09:49:10.802366+00:00",
+          "type": "check_start"
+        },
+        {
+          "message": "发现新版本：v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:49:15.698771+00:00",
+          "type": "new_release"
+        },
+        {
+          "asset": "clash-party-windows-1.9.1-ia32-setup.exe",
+          "error_type": "network",
+          "message": "clash-party-windows-1.9.1-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "path": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party/v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:49:30.259409+00:00",
+          "type": "download_error"
+        },
+        {
+          "asset": "clash-party-windows-1.9.1-x64-setup.exe",
+          "error_type": "network",
+          "message": "clash-party-windows-1.9.1-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "path": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party/v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:49:44.567921+00:00",
+          "type": "download_error"
+        },
+        {
+          "asset": "mihomo-party-win7-1.9.0-ia32-setup.exe",
+          "error_type": "network",
+          "message": "mihomo-party-win7-1.9.0-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "path": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party/v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:49:58.861122+00:00",
+          "type": "download_error"
+        },
+        {
+          "asset": "mihomo-party-win7-1.9.0-x64-setup.exe",
+          "error_type": "network",
+          "message": "mihomo-party-win7-1.9.0-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "path": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party/v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:50:13.188827+00:00",
+          "type": "download_error"
+        },
+        {
+          "asset": "mihomo-party-win7-1.9.1-ia32-setup.exe",
+          "error_type": "network",
+          "message": "mihomo-party-win7-1.9.1-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "path": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party/v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:50:27.741561+00:00",
+          "type": "download_error"
+        },
+        {
+          "asset": "mihomo-party-win7-1.9.1-x64-setup.exe",
+          "error_type": "network",
+          "message": "mihomo-party-win7-1.9.1-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "path": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party/v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:50:42.252767+00:00",
+          "type": "download_error"
+        },
+        {
+          "asset": "mihomo-party-windows-1.9.0-arm64-setup.exe",
+          "error_type": "network",
+          "message": "mihomo-party-windows-1.9.0-arm64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "path": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party/v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:50:56.942841+00:00",
+          "type": "download_error"
+        },
+        {
+          "asset": "mihomo-party-windows-1.9.0-ia32-setup.exe",
+          "error_type": "network",
+          "message": "mihomo-party-windows-1.9.0-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "path": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party/v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:51:11.484488+00:00",
+          "type": "download_error"
+        },
+        {
+          "asset": "mihomo-party-windows-1.9.0-x64-setup.exe",
+          "error_type": "network",
+          "message": "mihomo-party-windows-1.9.0-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "path": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party/v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:51:25.994142+00:00",
+          "type": "download_error"
+        },
+        {
+          "asset": "mihomo-party-windows-1.9.1-arm64-setup.exe",
+          "error_type": "network",
+          "message": "mihomo-party-windows-1.9.1-arm64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "path": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party/v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:51:40.540808+00:00",
+          "type": "download_error"
+        },
+        {
+          "asset": "mihomo-party-windows-1.9.1-ia32-setup.exe",
+          "error_type": "network",
+          "message": "mihomo-party-windows-1.9.1-ia32-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "path": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party/v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:51:55.194089+00:00",
+          "type": "download_error"
+        },
+        {
+          "asset": "mihomo-party-windows-1.9.1-x64-setup.exe",
+          "error_type": "network",
+          "message": "mihomo-party-windows-1.9.1-x64-setup.exe 下载失败：Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "path": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party/v1.9.1",
+          "tag": "v1.9.1",
+          "time": "2026-03-01T09:52:09.724860+00:00",
+          "type": "download_error"
+        },
+        {
+          "error_type": "network",
+          "message": "mihomo-party-windows-1.9.1-x64-setup.exe: Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+          "time": "2026-03-01T09:52:09.749640+00:00",
+          "type": "check_error"
+        }
+      ],
+      "releases": {
+        "v1.9.1": {
+          "created_at": "2026-01-15T16:46:37+00:00",
+          "downloaded_assets": [
+            "clash-party-win7-1.9.0-ia32-setup.exe",
+            "clash-party-win7-1.9.0-x64-setup.exe",
+            "clash-party-win7-1.9.1-ia32-setup.exe",
+            "clash-party-win7-1.9.1-x64-setup.exe",
+            "clash-party-windows-1.9.0-arm64-setup.exe",
+            "clash-party-windows-1.9.0-ia32-setup.exe",
+            "clash-party-windows-1.9.0-x64-setup.exe",
+            "clash-party-windows-1.9.1-arm64-setup.exe"
+          ],
+          "html_url": "https://github.com/mihomo-party-org/clash-party/releases/tag/v1.9.1",
+          "processed_at": "2026-03-01T09:52:09.724870+00:00",
+          "published_at": "2026-01-15T16:49:50+00:00"
+        }
+      },
+      "stats": {
+        "checks_failed": 2,
+        "checks_network_failed": 1,
+        "checks_total": 2,
+        "current_processed_at": "2026-03-01T09:52:09.724870+00:00",
+        "current_published_at": "2026-01-15T16:49:50+00:00",
+        "current_tag": "v1.9.1",
+        "download_errors_total": 12,
+        "download_root": "/Users/lvxiaoer/Documents/GithubReleaseWatcher/real_downloads/mihomo-party-org/clash-party",
+        "keep_last_effective": 1,
+        "last_check_finished_at": "2026-03-01T09:52:09.749647+00:00",
+        "last_check_had_errors": true,
+        "last_check_had_network_error": true,
+        "last_check_ok": false,
+        "last_check_started_at": "2026-03-01T09:49:10.802361+00:00",
+        "last_error": "mihomo-party-windows-1.9.1-x64-setup.exe: Download failed after 3 attempts: http 403: {\"message\":\"API rate limit exceeded for 104.28.247.68. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+        "last_error_type": "network",
+        "latest_release_published_at": "2026-01-15T16:49:50+00:00",
+        "latest_release_tag": "v1.9.1",
+        "new_releases_detected": 1,
+        "storage_mode": "local"
+      },
+      "update": {
+        "computed_at": "2026-03-01T09:49:15.698819+00:00",
+        "mean_interval_seconds": 444979,
+        "median_interval_seconds": 60772,
+        "sample_count": 101
+      }
+    }
+  },
+  "version": 1
+}

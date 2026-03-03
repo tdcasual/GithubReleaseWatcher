@@ -1,0 +1,115 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "← 返回" [ref=e5] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e6]:
+          - generic [ref=e7]: mihomo-party-org/clash-party
+          - generic [ref=e8]: 活动与统计
+      - generic [ref=e9]:
+        - generic [ref=e10]: 加载中…
+        - button "立即检查" [ref=e11] [cursor=pointer]
+    - main [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]:
+          - generic [ref=e15]:
+            - heading "概览" [level=2] [ref=e16]
+            - paragraph [ref=e17]: 当前版本、检查计划、下载/清理统计。
+          - generic [ref=e18]:
+            - button "折叠" [expanded] [ref=e19] [cursor=pointer]
+            - button "复制摘要" [ref=e20] [cursor=pointer]
+            - button "复制诊断包" [ref=e21] [cursor=pointer]
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - generic [ref=e24]:
+              - generic [ref=e25]: 当前版本
+              - generic [ref=e26]: "-"
+            - generic [ref=e27]:
+              - generic [ref=e28]: 下次检查
+              - generic [ref=e29]: "-"
+            - generic [ref=e30]:
+              - generic [ref=e31]: 上次检查
+              - generic [ref=e32]: "-"
+            - generic [ref=e33]:
+              - generic [ref=e34]: 推荐检查间隔
+              - generic [ref=e35]: "-"
+          - generic [ref=e37]:
+            - generic [ref=e38]:
+              - generic [ref=e39]: 检查次数
+              - generic [ref=e40]: "0"
+            - generic [ref=e41]:
+              - generic [ref=e42]: 网络失败次数
+              - generic [ref=e43]: "0"
+            - generic [ref=e44]:
+              - generic [ref=e45]: 下载次数（资产）
+              - generic [ref=e46]: "0"
+            - generic [ref=e47]:
+              - generic [ref=e48]: 删除旧版本次数
+              - generic [ref=e49]: "0"
+            - generic [ref=e50]:
+              - generic [ref=e51]: 已保存版本数
+              - generic [ref=e52]: "0"
+            - generic [ref=e53]:
+              - generic [ref=e54]: 下载失败次数
+              - generic [ref=e55]: "0"
+            - generic [ref=e56]:
+              - generic [ref=e57]: 上传重试次数
+              - generic [ref=e58]: "0"
+            - generic [ref=e59]:
+              - generic [ref=e60]: 上传校验失败
+              - generic [ref=e61]: "0"
+            - generic [ref=e62]:
+              - generic [ref=e63]: 上传队列深度
+              - generic [ref=e64]: "0"
+            - generic [ref=e65]:
+              - generic [ref=e66]: 检查成功率
+              - generic [ref=e67]: "-"
+            - generic [ref=e68]:
+              - generic [ref=e69]: 下载成功率
+              - generic [ref=e70]: "-"
+          - status
+          - status
+          - status
+          - alert
+      - generic [ref=e71]:
+        - generic [ref=e72]:
+          - generic [ref=e73]:
+            - heading "版本" [level=2] [ref=e74]
+            - paragraph [ref=e75]: 已保存的 Release 版本（来自 state.json）。
+          - generic [ref=e76]:
+            - button "折叠" [expanded] [ref=e77] [cursor=pointer]
+            - button "复制版本列表" [ref=e78] [cursor=pointer]
+        - generic [ref=e79]:
+          - status
+          - generic [ref=e80]: 加载中…
+      - generic [ref=e81]:
+        - generic [ref=e82]:
+          - generic [ref=e83]:
+            - heading "活动" [level=2] [ref=e84]
+            - paragraph [ref=e85]: 下载/清理/检查事件（每仓库独立记录）。
+          - generic [ref=e86]:
+            - button "折叠" [expanded] [ref=e87] [cursor=pointer]
+            - button "复制活动" [ref=e88] [cursor=pointer]
+        - generic [ref=e90]: 加载中…
+    - contentinfo [ref=e91]:
+      - generic [ref=e92]:
+        - text: "API:"
+        - code [ref=e93]: /api/v1
+  - dialog [ref=e94]:
+    - generic [ref=e95]:
+      - generic [ref=e97]:
+        - heading "登录" [level=3] [ref=e98]
+        - paragraph [ref=e99]:
+          - text: 默认账号密码为
+          - code [ref=e100]: admin
+          - text: /
+          - code [ref=e101]: admin
+          - text: 。
+      - alert
+      - generic [ref=e102]: 账号
+      - textbox "账号" [active] [ref=e103]
+      - generic [ref=e104]: 密码
+      - textbox "密码" [ref=e105]
+      - list [ref=e106]:
+        - button "登录" [ref=e107] [cursor=pointer]

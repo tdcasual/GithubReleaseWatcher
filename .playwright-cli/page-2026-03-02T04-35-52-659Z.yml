@@ -1,0 +1,330 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: Release Watcher
+        - generic [ref=e8]: GitHub Release 监控与备份
+      - generic [ref=e9]:
+        - generic [ref=e10]: 需先改密
+        - button "立即检查" [ref=e11] [cursor=pointer]
+        - button "设置" [ref=e12] [cursor=pointer]
+        - generic [ref=e13]:
+          - generic [ref=e14]: admin
+          - button "退出" [ref=e15] [cursor=pointer]
+    - main [ref=e16]:
+      - status [ref=e17]:
+        - generic [ref=e18]: 安全限制：当前账号需先修改密码，创建/更新类操作会被拒绝。
+        - button "立即改密" [ref=e19] [cursor=pointer]
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - heading "运行状态" [level=2] [ref=e23]
+            - paragraph [ref=e24]: 可手动触发或按间隔自动轮询。偶发错误会记录但不会停止服务。
+          - button "重新加载配置" [ref=e26] [cursor=pointer]
+        - generic [ref=e27]:
+          - generic [ref=e28]:
+            - generic [ref=e29]: 自动轮询
+            - generic [ref=e31]:
+              - checkbox "自动轮询开关" [checked]
+          - generic [ref=e33]:
+            - generic [ref=e34]: 基础间隔
+            - generic [ref=e36]:
+              - spinbutton [ref=e37]: "0.1667"
+              - generic [ref=e38]: 小时
+          - generic [ref=e39]:
+            - generic [ref=e40]: 最近下次检查
+            - generic [ref=e41]: 3/2/2026, 7:46:08 PM
+          - generic [ref=e42]:
+            - generic [ref=e43]: 上次执行
+            - generic [ref=e44]: 3/2/2026, 1:11:59 AM （成功）
+          - generic [ref=e45]:
+            - generic [ref=e46]: 上次执行范围
+            - generic [ref=e47]: 单仓库：mihomo-party-org/clash-party · 来源：调度
+        - generic [ref=e49]:
+          - generic [ref=e50]:
+            - generic [ref=e51]: 保留最近 N 个 Release
+            - generic [ref=e52]:
+              - spinbutton "保留最近 N 个 Release" [ref=e53]: "1"
+              - generic [ref=e54]: （1 表示仅保留最新一次发布）
+          - button "保存更改" [disabled] [ref=e56]
+        - paragraph [ref=e57]: 配置文件：config.toml（覆盖文件：config.override.json） · 调度：按仓库自适应 · 安全提示：请先修改默认登录密码
+      - generic [ref=e58]:
+        - generic [ref=e59]:
+          - generic [ref=e60]:
+            - heading "仓库与资产规则" [level=2] [ref=e61]
+            - paragraph [ref=e62]: 选择需要保存的发布类型（如 exe、apk），以及每个仓库的保留数量。
+          - generic [ref=e63]:
+            - generic [ref=e64]:
+              - textbox "搜索仓库" [ref=e65]:
+                - /placeholder: 搜索 owner/repo
+              - combobox "状态筛选" [ref=e66]:
+                - option "全部状态" [selected]
+                - option "仅启用"
+                - option "仅停用"
+                - option "仅异常"
+                - option "仅网络异常"
+                - option "仅缓存异常"
+              - combobox "排序" [ref=e67]:
+                - option "默认排序" [selected]
+                - option "错误优先"
+                - option "下次检查时间"
+            - button "添加仓库" [ref=e68] [cursor=pointer]
+        - button "展开批量操作（已选 0）" [ref=e70] [cursor=pointer]
+        - status
+        - generic [ref=e72]:
+          - generic [ref=e73]:
+            - generic [ref=e75]:
+              - generic [ref=e76]: mihomo-party-org/clash-party
+              - generic [ref=e77]: https://github.com/mihomo-party-org/clash-party
+              - generic [ref=e78]: 状态：正常 · 当前：v1.9.1 · 版本：1 · 资产：12 · 删除：0 · 更新约：16小时52分钟 · 检查约：18小时34分钟 · 下次：7小时10分钟
+            - generic [ref=e79]:
+              - generic [ref=e80]:
+                - checkbox "选择仓库 mihomo-party-org/clash-party" [ref=e81]
+                - generic [ref=e82]: 选中
+              - button "查看仓库 mihomo-party-org/clash-party 活动" [ref=e83] [cursor=pointer]: 活动
+              - button "检查仓库 mihomo-party-org/clash-party" [ref=e84] [cursor=pointer]: 检查
+              - generic [ref=e85]:
+                - generic [ref=e86]: 启用
+                - generic [ref=e87]:
+                  - checkbox "启用仓库 mihomo-party-org/clash-party" [checked]
+          - generic [ref=e89]:
+            - generic [ref=e90]:
+              - generic [ref=e91]: 保留最近 N 个（留空表示使用全局）
+              - spinbutton "仓库 mihomo-party-org/clash-party 保留最近 N 个版本" [ref=e92]: "1"
+            - generic [ref=e93]:
+              - generic [ref=e94]: 保存哪些发布资产（按类型后缀）
+              - generic [ref=e95]:
+                - generic [ref=e96]:
+                  - checkbox "Windows (.exe)" [checked] [ref=e97]
+                  - generic [ref=e98]: Windows (.exe)
+                - generic [ref=e99]:
+                  - checkbox "Android (.apk)" [checked] [ref=e100]
+                  - generic [ref=e101]: Android (.apk)
+                - generic [ref=e102]:
+                  - checkbox "ZIP (.zip)" [ref=e103]
+                  - generic [ref=e104]: ZIP (.zip)
+                - generic [ref=e105]:
+                  - checkbox "tar.gz" [ref=e106]
+                  - generic [ref=e107]: tar.gz
+                - generic [ref=e108]:
+                  - checkbox "macOS (.dmg)" [ref=e109]
+                  - generic [ref=e110]: macOS (.dmg)
+                - generic [ref=e111]:
+                  - checkbox "Linux (.deb)" [ref=e112]
+                  - generic [ref=e113]: Linux (.deb)
+                - generic [ref=e114]:
+                  - checkbox "Linux (.rpm)" [ref=e115]
+                  - generic [ref=e116]: Linux (.rpm)
+              - generic [ref=e117]:
+                - textbox "仓库 mihomo-party-org/clash-party 添加自定义类型" [ref=e118]:
+                  - /placeholder: "自定义类型，如: msi"
+                - button "添加" [ref=e119] [cursor=pointer]
+          - paragraph [ref=e120]: 提示：asset_types 会与 include_assets/exclude_assets 正则叠加生效；需要更精细匹配可直接编辑 config.toml 或通过 API settings 更新正则。
+        - status [ref=e121]: （共 1）
+      - generic [ref=e122]:
+        - generic [ref=e123]:
+          - generic [ref=e124]:
+            - heading "活动" [level=2] [ref=e125]
+            - paragraph [ref=e126]: 仅展示关键动作：下载/清理。完整日志写入文件。
+          - button "复制活动" [ref=e128] [cursor=pointer]
+        - status [ref=e129]: 日志文件：/Users/lvxiaoer/Documents/GithubReleaseWatcher/watcher.log
+        - log [ref=e130]:
+          - article [ref=e131]:
+            - generic [ref=e132]:
+              - generic "3/2/2026, 1:11:59 AM" [ref=e133]: 01:11
+              - generic [ref=e134]: 正常
+              - generic [ref=e135]: 下载
+            - generic [ref=e136]: mihomo-party-org/clash-party 下载完成
+          - article [ref=e137]:
+            - generic [ref=e138]:
+              - generic "3/2/2026, 1:10:57 AM" [ref=e139]: 01:10
+              - generic [ref=e140]: 正常
+              - generic [ref=e141]: 下载
+            - generic [ref=e142]: mihomo-party-org/clash-party 下载完成
+          - article [ref=e143]:
+            - generic [ref=e144]:
+              - generic "3/2/2026, 1:10:02 AM" [ref=e145]: 01:10
+              - generic [ref=e146]: 正常
+              - generic [ref=e147]: 下载
+            - generic [ref=e148]: mihomo-party-org/clash-party 下载完成
+          - article [ref=e149]:
+            - generic [ref=e150]:
+              - generic "3/2/2026, 1:09:01 AM" [ref=e151]: 01:09
+              - generic [ref=e152]: 正常
+              - generic [ref=e153]: 下载
+            - generic [ref=e154]: mihomo-party-org/clash-party 下载完成
+          - article [ref=e155]:
+            - generic [ref=e156]:
+              - generic "3/2/2026, 1:08:02 AM" [ref=e157]: 01:08
+              - generic [ref=e158]: 正常
+              - generic [ref=e159]: 下载
+            - generic [ref=e160]: mihomo-party-org/clash-party 下载完成
+          - article [ref=e161]:
+            - generic [ref=e162]:
+              - generic "3/2/2026, 1:07:39 AM" [ref=e163]: 01:07
+              - generic [ref=e164]: 正常
+              - generic [ref=e165]: 下载
+            - generic [ref=e166]: mihomo-party-org/clash-party 下载完成
+          - article [ref=e167]:
+            - generic [ref=e168]:
+              - generic "3/2/2026, 1:07:21 AM" [ref=e169]: 01:07
+              - generic [ref=e170]: 正常
+              - generic [ref=e171]: 下载
+            - generic [ref=e172]: mihomo-party-org/clash-party 下载完成
+          - button "21:17 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e173] [cursor=pointer]:
+            - generic [ref=e174]:
+              - generic "3/1/2026, 9:17:05 PM" [ref=e175]: 21:17
+              - generic [ref=e176]: 错误
+              - generic [ref=e177]: 下载
+            - generic [ref=e178]: mihomo-party-org/clash-party 下载失败
+          - button "21:16 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e179] [cursor=pointer]:
+            - generic [ref=e180]:
+              - generic "3/1/2026, 9:16:51 PM" [ref=e181]: 21:16
+              - generic [ref=e182]: 错误
+              - generic [ref=e183]: 下载
+            - generic [ref=e184]: mihomo-party-org/clash-party 下载失败
+          - button "21:16 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e185] [cursor=pointer]:
+            - generic [ref=e186]:
+              - generic "3/1/2026, 9:16:36 PM" [ref=e187]: 21:16
+              - generic [ref=e188]: 错误
+              - generic [ref=e189]: 下载
+            - generic [ref=e190]: mihomo-party-org/clash-party 下载失败
+          - button "21:16 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e191] [cursor=pointer]:
+            - generic [ref=e192]:
+              - generic "3/1/2026, 9:16:22 PM" [ref=e193]: 21:16
+              - generic [ref=e194]: 错误
+              - generic [ref=e195]: 下载
+            - generic [ref=e196]: mihomo-party-org/clash-party 下载失败
+          - button "21:16 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e197] [cursor=pointer]:
+            - generic [ref=e198]:
+              - generic "3/1/2026, 9:16:07 PM" [ref=e199]: 21:16
+              - generic [ref=e200]: 错误
+              - generic [ref=e201]: 下载
+            - generic [ref=e202]: mihomo-party-org/clash-party 下载失败
+          - button "21:15 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e203] [cursor=pointer]:
+            - generic [ref=e204]:
+              - generic "3/1/2026, 9:15:53 PM" [ref=e205]: 21:15
+              - generic [ref=e206]: 错误
+              - generic [ref=e207]: 下载
+            - generic [ref=e208]: mihomo-party-org/clash-party 下载失败
+          - button "21:15 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e209] [cursor=pointer]:
+            - generic [ref=e210]:
+              - generic "3/1/2026, 9:15:38 PM" [ref=e211]: 21:15
+              - generic [ref=e212]: 错误
+              - generic [ref=e213]: 下载
+            - generic [ref=e214]: mihomo-party-org/clash-party 下载失败
+          - article [ref=e215]:
+            - generic [ref=e216]:
+              - generic "3/1/2026, 9:15:23 PM" [ref=e217]: 21:15
+              - generic [ref=e218]: 正常
+              - generic [ref=e219]: 下载
+            - generic [ref=e220]: mihomo-party-org/clash-party 下载完成
+          - article [ref=e221]:
+            - generic [ref=e222]:
+              - generic "3/1/2026, 9:14:35 PM" [ref=e223]: 21:14
+              - generic [ref=e224]: 正常
+              - generic [ref=e225]: 下载
+            - generic [ref=e226]: mihomo-party-org/clash-party 下载完成
+          - article [ref=e227]:
+            - generic [ref=e228]:
+              - generic "3/1/2026, 9:14:09 PM" [ref=e229]: 21:14
+              - generic [ref=e230]: 正常
+              - generic [ref=e231]: 下载
+            - generic [ref=e232]: mihomo-party-org/clash-party 下载完成
+          - article [ref=e233]:
+            - generic [ref=e234]:
+              - generic "3/1/2026, 9:13:53 PM" [ref=e235]: 21:13
+              - generic [ref=e236]: 正常
+              - generic [ref=e237]: 下载
+            - generic [ref=e238]: mihomo-party-org/clash-party 下载完成
+          - article [ref=e239]:
+            - generic [ref=e240]:
+              - generic "3/1/2026, 9:13:38 PM" [ref=e241]: 21:13
+              - generic [ref=e242]: 正常
+              - generic [ref=e243]: 下载
+            - generic [ref=e244]: mihomo-party-org/clash-party 下载完成
+          - button "18:53 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e245] [cursor=pointer]:
+            - generic [ref=e246]:
+              - generic "3/1/2026, 6:53:07 PM" [ref=e247]: 18:53
+              - generic [ref=e248]: 错误
+              - generic [ref=e249]: 下载
+            - generic [ref=e250]: mihomo-party-org/clash-party 下载失败
+          - button "18:52 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e251] [cursor=pointer]:
+            - generic [ref=e252]:
+              - generic "3/1/2026, 6:52:52 PM" [ref=e253]: 18:52
+              - generic [ref=e254]: 错误
+              - generic [ref=e255]: 下载
+            - generic [ref=e256]: mihomo-party-org/clash-party 下载失败
+          - button "18:52 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e257] [cursor=pointer]:
+            - generic [ref=e258]:
+              - generic "3/1/2026, 6:52:38 PM" [ref=e259]: 18:52
+              - generic [ref=e260]: 错误
+              - generic [ref=e261]: 下载
+            - generic [ref=e262]: mihomo-party-org/clash-party 下载失败
+          - button "18:52 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e263] [cursor=pointer]:
+            - generic [ref=e264]:
+              - generic "3/1/2026, 6:52:23 PM" [ref=e265]: 18:52
+              - generic [ref=e266]: 错误
+              - generic [ref=e267]: 下载
+            - generic [ref=e268]: mihomo-party-org/clash-party 下载失败
+          - button "18:52 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e269] [cursor=pointer]:
+            - generic [ref=e270]:
+              - generic "3/1/2026, 6:52:09 PM" [ref=e271]: 18:52
+              - generic [ref=e272]: 错误
+              - generic [ref=e273]: 下载
+            - generic [ref=e274]: mihomo-party-org/clash-party 下载失败
+          - button "18:51 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e275] [cursor=pointer]:
+            - generic [ref=e276]:
+              - generic "3/1/2026, 6:51:54 PM" [ref=e277]: 18:51
+              - generic [ref=e278]: 错误
+              - generic [ref=e279]: 下载
+            - generic [ref=e280]: mihomo-party-org/clash-party 下载失败
+          - button "18:51 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e281] [cursor=pointer]:
+            - generic [ref=e282]:
+              - generic "3/1/2026, 6:51:40 PM" [ref=e283]: 18:51
+              - generic [ref=e284]: 错误
+              - generic [ref=e285]: 下载
+            - generic [ref=e286]: mihomo-party-org/clash-party 下载失败
+          - button "18:51 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e287] [cursor=pointer]:
+            - generic [ref=e288]:
+              - generic "3/1/2026, 6:51:25 PM" [ref=e289]: 18:51
+              - generic [ref=e290]: 错误
+              - generic [ref=e291]: 下载
+            - generic [ref=e292]: mihomo-party-org/clash-party 下载失败
+          - button "18:51 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e293] [cursor=pointer]:
+            - generic [ref=e294]:
+              - generic "3/1/2026, 6:51:10 PM" [ref=e295]: 18:51
+              - generic [ref=e296]: 错误
+              - generic [ref=e297]: 下载
+            - generic [ref=e298]: mihomo-party-org/clash-party 下载失败
+          - button "18:50 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e299] [cursor=pointer]:
+            - generic [ref=e300]:
+              - generic "3/1/2026, 6:50:56 PM" [ref=e301]: 18:50
+              - generic [ref=e302]: 错误
+              - generic [ref=e303]: 下载
+            - generic [ref=e304]: mihomo-party-org/clash-party 下载失败
+          - button "18:50 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e305] [cursor=pointer]:
+            - generic [ref=e306]:
+              - generic "3/1/2026, 6:50:42 PM" [ref=e307]: 18:50
+              - generic [ref=e308]: 错误
+              - generic [ref=e309]: 下载
+            - generic [ref=e310]: mihomo-party-org/clash-party 下载失败
+          - button "18:50 错误 下载 mihomo-party-org/clash-party 下载失败" [ref=e311] [cursor=pointer]:
+            - generic [ref=e312]:
+              - generic "3/1/2026, 6:50:27 PM" [ref=e313]: 18:50
+              - generic [ref=e314]: 错误
+              - generic [ref=e315]: 下载
+            - generic [ref=e316]: mihomo-party-org/clash-party 下载失败
+        - paragraph [ref=e317]: 提示：该区域可上下滑动查看更多内容。
+    - contentinfo [ref=e318]:
+      - generic [ref=e319]:
+        - text: "API:"
+        - code [ref=e320]: /api/v1
+  - status: 请先在设置中修改默认账号密码。
+  - navigation "快速导航" [ref=e321]:
+    - link "状态" [ref=e322] [cursor=pointer]:
+      - /url: "#statusSection"
+    - link "仓库" [ref=e323] [cursor=pointer]:
+      - /url: "#reposSection"
+    - link "活动" [ref=e324] [cursor=pointer]:
+      - /url: "#logsSection"
