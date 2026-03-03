@@ -12,12 +12,13 @@ STRICT=0
 
 usage() {
   cat <<USAGE
-Usage: scripts/qa/check_acceptance_status.sh [RUN_DIR] [--strict]
+Usage: scripts/qa/check_acceptance_status.sh [RUN_DIR] [--checklist FILE] [--strict]
 
 Summarize Gate checklist/report status and evaluate release readiness.
 
 Arguments:
   RUN_DIR    Optional manual QA run directory (defaults to artifacts/manual-qa/latest-run-dir when available)
+  --checklist FILE  Override release checklist path (for automation/testing)
   --strict   Exit with code 2 when release is not ready
 USAGE
 }
@@ -27,6 +28,10 @@ while [[ $# -gt 0 ]]; do
     --strict)
       STRICT=1
       shift
+      ;;
+    --checklist)
+      CHECKLIST_FILE="${2:-}"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -123,9 +128,11 @@ gate_line_state() {
 
 GATE2_REPORT=""
 GATE3_REPORT=""
+GATE4_REPORT=""
 if [[ -n "$RUN_DIR" ]]; then
   GATE2_REPORT="$RUN_DIR/gate2-report.md"
   GATE3_REPORT="$RUN_DIR/gate3-report.md"
+  GATE4_REPORT="$RUN_DIR/gate4-report.md"
 fi
 
 GATE1_CHECKLIST="$(gate_line_state "$CHECKLIST_FILE" "Gate 1:")"
@@ -135,11 +142,15 @@ GATE4_CHECKLIST="$(gate_line_state "$CHECKLIST_FILE" "Gate 4:")"
 
 GATE2_REPORT_STATE="MISSING"
 GATE3_REPORT_STATE="MISSING"
+GATE4_REPORT_STATE="MISSING"
 if [[ -n "$GATE2_REPORT" ]]; then
   GATE2_REPORT_STATE="$(pair_state "$GATE2_REPORT" "Gate 2 pass" "Gate 2 blocked")"
 fi
 if [[ -n "$GATE3_REPORT" ]]; then
   GATE3_REPORT_STATE="$(pair_state "$GATE3_REPORT" "Gate 3 pass" "Gate 3 blocked")"
+fi
+if [[ -n "$GATE4_REPORT" ]]; then
+  GATE4_REPORT_STATE="$(pair_state "$GATE4_REPORT" "Gate 4 pass" "Gate 4 blocked")"
 fi
 
 echo "Acceptance status snapshot"
@@ -159,6 +170,7 @@ echo
 echo "Gate reports:"
 echo "- Gate 2 report: $GATE2_REPORT_STATE"
 echo "- Gate 3 report: $GATE3_REPORT_STATE"
+echo "- Gate 4 report: $GATE4_REPORT_STATE"
 
 READY=1
 REASONS=""
@@ -178,6 +190,10 @@ fi
 if [[ "$GATE3_REPORT_STATE" != "PASS" ]]; then
   READY=0
   REASONS+=$'\n'"- Gate 3 report is not PASS."
+fi
+if [[ "$GATE4_REPORT_STATE" != "PASS" ]]; then
+  READY=0
+  REASONS+=$'\n'"- Gate 4 report is not PASS."
 fi
 if [[ "$GATE2_CHECKLIST" != "CHECKED" ]]; then
   READY=0

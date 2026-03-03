@@ -143,6 +143,7 @@ Run time (UTC+8): 2026-03-01 18:42 CST
 Commands:
 
 ```bash
+scripts/qa/new_gate4_report.sh artifacts/manual-qa/<timestamp>
 node --check github_release_watcher/static/app.js
 node --check github_release_watcher/static/repo.js
 python3 -m unittest tests.test_ui_mobile_accessibility -v
@@ -179,6 +180,7 @@ Evidence notes:
 - 2026-03-01 18:17 CST rerun (after muted contrast + viewport-fit=cover fixes): same command set + `test_ui_mobile_accessibility` passed.
 - 2026-03-01 18:24 CST rerun (after gate checklist auto-sync tooling): same command set + `test_ui_mobile_accessibility` + `test_acceptance_gate_sync` passed.
 - 2026-03-01 18:42 CST rerun (after bootstrap detach stability fix): same command set + `test_acceptance_bootstrap_detach` + detached-run smoke passed.
+- 建议使用 `scripts/qa/new_gate4_report.sh` 自动产出 `artifacts/manual-qa/<timestamp>/gate4-report.md`，并作为 Gate 4 勾选依据。
 - Follow-up: `urllib3` reported `NotOpenSSLWarning` on local Python runtime (`LibreSSL 2.8.3`); does not block current functional checks.
 
 ---

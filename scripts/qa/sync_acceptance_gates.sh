@@ -13,7 +13,7 @@ usage() {
   cat <<USAGE
 Usage: scripts/qa/sync_acceptance_gates.sh [RUN_DIR] [--checklist FILE] [--dry-run]
 
-Sync Gate 2 / Gate 3 checkbox state in release checklist from gate reports.
+Sync Gate 2 / Gate 3 / Gate 4 checkbox state in release checklist from gate reports.
 
 Rules:
   - Report PASS    -> corresponding gate checkbox becomes [x]
@@ -112,13 +112,17 @@ pair_state() {
 
 GATE2_REPORT="$RUN_DIR/gate2-report.md"
 GATE3_REPORT="$RUN_DIR/gate3-report.md"
+GATE4_REPORT="$RUN_DIR/gate4-report.md"
 GATE2_STATE="$(pair_state "$GATE2_REPORT" "Gate 2 pass" "Gate 2 blocked")"
 GATE3_STATE="$(pair_state "$GATE3_REPORT" "Gate 3 pass" "Gate 3 blocked")"
+GATE4_STATE="$(pair_state "$GATE4_REPORT" "Gate 4 pass" "Gate 4 blocked")"
 
 GATE2_MARK=" "
 GATE3_MARK=" "
+GATE4_MARK=" "
 [[ "$GATE2_STATE" == "PASS" ]] && GATE2_MARK="x"
 [[ "$GATE3_STATE" == "PASS" ]] && GATE3_MARK="x"
+[[ "$GATE4_STATE" == "PASS" ]] && GATE4_MARK="x"
 
 TMP_FILE="$(mktemp)"
 cleanup() {
@@ -126,11 +130,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-awk -v g2="$GATE2_MARK" -v g3="$GATE3_MARK" '
+awk -v g2="$GATE2_MARK" -v g3="$GATE3_MARK" -v g4="$GATE4_MARK" '
   {
     line = $0
     if (line ~ /^- \[[xX ]\] Gate 2: /) sub(/^- \[[xX ]\]/, "- [" g2 "]", line)
     if (line ~ /^- \[[xX ]\] Gate 3: /) sub(/^- \[[xX ]\]/, "- [" g3 "]", line)
+    if (line ~ /^- \[[xX ]\] Gate 4: /) sub(/^- \[[xX ]\]/, "- [" g4 "]", line)
     print line
   }
 ' "$CHECKLIST_FILE" > "$TMP_FILE"
@@ -139,6 +144,7 @@ echo "Sync source:"
 echo "- Run dir: $RUN_DIR"
 echo "- Gate 2 report state: $GATE2_STATE"
 echo "- Gate 3 report state: $GATE3_STATE"
+echo "- Gate 4 report state: $GATE4_STATE"
 echo "- Checklist: $CHECKLIST_FILE"
 
 if cmp -s "$TMP_FILE" "$CHECKLIST_FILE"; then
@@ -157,3 +163,4 @@ cp "$TMP_FILE" "$CHECKLIST_FILE"
 echo "Checklist updated:"
 echo "- Gate 2 checkbox => [$GATE2_MARK]"
 echo "- Gate 3 checkbox => [$GATE3_MARK]"
+echo "- Gate 4 checkbox => [$GATE4_MARK]"
