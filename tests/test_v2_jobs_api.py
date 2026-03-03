@@ -36,6 +36,20 @@ class V2JobsApiTests(unittest.TestCase):
             self.assertGreaterEqual(len(items), 1)
             self.assertIn(created["id"], {item.get("id") for item in items if isinstance(item, dict)})
 
+    def test_enqueue_rejects_empty_kind_with_400(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "v2.sqlite3"
+            client = TestClient(
+                create_app(db_path=db_path, auth_username="tester", auth_password="pass"),
+                raise_server_exceptions=False,
+            )
+            login = client.post("/api/v2/auth/login", json={"username": "tester", "password": "pass"})
+            self.assertEqual(login.status_code, 200)
+
+            bad = client.post("/api/v2/jobs", json={"kind": "", "payload": {}})
+            self.assertEqual(bad.status_code, 400)
+            self.assertIn("kind is required", bad.text)
+
 
 if __name__ == "__main__":
     unittest.main()

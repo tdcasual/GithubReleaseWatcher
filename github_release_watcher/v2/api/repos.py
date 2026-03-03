@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..repositories.repos_repo import add_repo, list_repos
@@ -22,7 +22,7 @@ def post_repo(body: RepoCreateRequest, request: Request) -> dict[str, Any]:
     ctx = require_auth(request)
     key = str(body.key or "").strip()
     if not key or "/" not in key:
-        raise ValueError("repo key must be owner/repo")
+        raise HTTPException(status_code=400, detail="repo key must be owner/repo")
     return add_repo(db_path=ctx.db_path, key=key, enabled=bool(body.enabled), policy=body.policy)
 
 

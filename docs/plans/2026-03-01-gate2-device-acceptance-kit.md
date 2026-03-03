@@ -18,7 +18,7 @@
 在仓库根目录执行：
 
 ```bash
-scripts/qa/manual_acceptance_bootstrap.sh --config config.toml --host 127.0.0.1 --port 18000
+scripts/qa/manual_acceptance_bootstrap.sh --host 127.0.0.1 --port 18000 --auth-username admin --auth-password change-me
 ```
 
 脚本会输出：

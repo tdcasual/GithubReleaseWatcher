@@ -193,12 +193,12 @@ Evidence notes:
 
 Rollback plan:
 1. 回滚到上一个稳定提交（当前基线建议：`3522a7b` 之后的发布分支基线，或按发布标签回退）。
-2. 保留并恢复 `config.override.json`、`state.json` 与下载目录数据，不做数据文件删除操作。
+2. 保留并恢复 `v2.sqlite3` 与下载目录数据，不做数据文件删除操作。
 3. 仅回滚前端静态资源与文档提交时，先执行：
-   - `node --check github_release_watcher/static/app.js`
-   - `node --check github_release_watcher/static/repo.js`
+   - `npm --prefix frontend test`
+   - `npm --prefix frontend run build`
 4. 回滚后执行最小冒烟：
-   - 登录 -> 首页加载 -> 单仓库“检查” -> 批量“检查” -> 设置页“测试 WebDAV”。
+   - 登录 -> 健康检查 -> 创建仓库 -> 创建任务 -> 追加事件 -> 查询任务与事件。
 
 Release handoff:
 - 发布交付说明：`docs/plans/2026-03-01-release-handoff.md`

@@ -10,7 +10,7 @@
 - 服务已启动并可访问（可用脚本）：
 
 ```bash
-scripts/qa/manual_acceptance_bootstrap.sh --config config.toml --host 127.0.0.1 --port 18000
+scripts/qa/manual_acceptance_bootstrap.sh --host 127.0.0.1 --port 18000 --auth-username admin --auth-password change-me
 ```
 
 - 设置中已切换到 `WebDAV` 存储模式。

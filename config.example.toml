@@ -1,12 +1,5 @@
 interval_seconds = 172800
-download_dir = "./downloads"
-state_file = "./state.json"
 keep_last = 5
-
-[github]
-# 建议使用环境变量：export GITHUB_TOKEN=...
-token = "${GITHUB_TOKEN}"
-api_base = "https://api.github.com"
 
 [storage]
 # local / webdav
@@ -26,14 +19,13 @@ mode = "local"
 # cleanup_mode = "delete" # delete / trash
 
 [[repos]]
-name = "gruntwork-io/fetch"
+name = "owner/repo"
 # 可选：禁用某个仓库（仍保留配置）
 enabled = true
-# include_assets/exclude_assets 均为正则表达式（Python re），为空则表示下载全部资产
-include_assets = ["(?i)^fetch_windows_amd64\\.exe$"]
+# 可选策略字段会在离线导入时写入 repo policy
+include_assets = []
 exclude_assets = []
-# 可选：按资产后缀筛选（与 include/exclude 正则叠加生效）
-asset_types = ["exe"]
+asset_types = []
 include_prereleases = false
 include_drafts = false
 keep_last = 3

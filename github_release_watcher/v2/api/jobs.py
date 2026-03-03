@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..jobs import enqueue_job, list_jobs
@@ -19,7 +19,10 @@ class EnqueueJobRequest(BaseModel):
 @router.post("", status_code=201)
 def post_jobs(body: EnqueueJobRequest, request: Request) -> dict[str, Any]:
     ctx = require_auth(request)
-    return enqueue_job(ctx.db_path, kind=body.kind, payload=body.payload)
+    try:
+        return enqueue_job(ctx.db_path, kind=body.kind, payload=body.payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("")

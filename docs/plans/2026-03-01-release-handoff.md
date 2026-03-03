@@ -22,7 +22,7 @@ Date: 2026-03-01
 1. 启动验收环境：
 
 ```bash
-scripts/qa/manual_acceptance_bootstrap.sh --config config.toml --host 127.0.0.1 --port 18000
+scripts/qa/manual_acceptance_bootstrap.sh --host 127.0.0.1 --port 18000 --auth-username admin --auth-password change-me
 ```
 
 2. 一键生成本轮验收包（Gate 2 + Gate 3 报告 + 总览）：
@@ -96,7 +96,7 @@ git push origin vX.Y.Z
 ## 6. 回滚说明（若发布后触发阻塞问题）
 
 1. 使用上一个稳定标签执行回滚（代码层）。
-2. 保留 `config.override.json`、`state.json` 与下载目录数据，不做删除。
+2. 保留 `v2.sqlite3` 与下载目录数据，不做删除。
 3. 回滚后执行最小冒烟：
 - 登录
 - 首页加载

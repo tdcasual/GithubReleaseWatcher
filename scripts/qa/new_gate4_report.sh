@@ -73,15 +73,15 @@ declare -a COMMANDS=()
 
 load_default_commands() {
   LABELS=(
-    "sync_vercel_public"
-    "pytest_stable"
-    "node_check_static"
+    "pytest_all"
+    "frontend_test_build"
+    "node_check_proxies"
     "smoke_api_flow"
   )
   COMMANDS=(
-    "bash scripts/release/sync_vercel_public.sh"
-    "python3 -m pytest -q -k \"not download_integration\""
-    "for action in github_release_watcher/static/*.js deploy/vercel/public/*.js; do node --check \"\$action\"; done"
+    "python3 -m pytest -q"
+    "npm --prefix frontend test && npm --prefix frontend run build"
+    "for action in deploy/vercel/api/v2/*.js deploy/cloudflare-worker/src/*.js; do node --check \"\$action\"; done"
     "bash scripts/qa/smoke_api_flow.sh"
   )
 }

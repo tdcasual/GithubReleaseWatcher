@@ -29,10 +29,6 @@ export default {
     if (!upstreamBase) return new Response("Missing UPSTREAM", { status: 500 });
 
     const incomingUrl = new URL(request.url);
-    const segments = incomingUrl.pathname.split("/").filter(Boolean);
-    if (segments.length >= 2 && segments[0] === "api" && segments[1] === "v1") {
-      return new Response("Not Found", { status: 404 });
-    }
 
     if (!checkBasicAuth(request, env.BASIC_AUTH_USER, env.BASIC_AUTH_PASS)) {
       return unauthorized();

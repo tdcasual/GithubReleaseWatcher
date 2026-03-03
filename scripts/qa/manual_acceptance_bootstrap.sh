@@ -4,30 +4,40 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-CONFIG_FILE="config.toml"
 HOST="127.0.0.1"
 PORT="18000"
+DB_PATH="v2.sqlite3"
+AUTH_USERNAME="${GRW_BOOTSTRAP_USERNAME:-admin}"
+AUTH_PASSWORD="${GRW_BOOTSTRAP_PASSWORD:-change-me}"
 
 usage() {
   cat <<USAGE
-Usage: scripts/qa/manual_acceptance_bootstrap.sh [--config FILE] [--host HOST] [--port PORT]
+Usage: scripts/qa/manual_acceptance_bootstrap.sh [--host HOST] [--port PORT] [--db-path PATH] [--auth-username USER] [--auth-password PASS]
 
-Start watcher web UI in background for manual acceptance and print evidence locations.
+Start V2 API server in background for manual acceptance and print evidence locations.
 USAGE
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --config)
-      CONFIG_FILE="${2:-}"
-      shift 2
-      ;;
     --host)
       HOST="${2:-}"
       shift 2
       ;;
     --port)
       PORT="${2:-}"
+      shift 2
+      ;;
+    --db-path)
+      DB_PATH="${2:-}"
+      shift 2
+      ;;
+    --auth-username)
+      AUTH_USERNAME="${2:-}"
+      shift 2
+      ;;
+    --auth-password)
+      AUTH_PASSWORD="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -42,9 +52,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ! -f "$CONFIG_FILE" ]]; then
-  echo "Config file not found: $CONFIG_FILE" >&2
-  echo "Tip: copy config.example.toml to config.toml first, then retry." >&2
+if [[ -z "$AUTH_USERNAME" || -z "$AUTH_PASSWORD" ]]; then
+  echo "Auth username/password must be non-empty." >&2
   exit 1
 fi
 
@@ -57,7 +66,13 @@ LATEST_FILE="artifacts/manual-qa/latest-run-dir"
 mkdir -p "$RUN_DIR"
 
 # Use nohup + closed stdin so process survives parent shell exit in automation environments.
-nohup python3 watcher.py --config "$CONFIG_FILE" --web --web-host "$HOST" --web-port "$PORT" >"$LOG_FILE" 2>&1 </dev/null &
+nohup python3 watcher.py \
+  --web \
+  --web-host "$HOST" \
+  --web-port "$PORT" \
+  --db-path "$DB_PATH" \
+  --auth-username "$AUTH_USERNAME" \
+  --auth-password "$AUTH_PASSWORD" >"$LOG_FILE" 2>&1 </dev/null &
 PID="$!"
 echo "$PID" > "$PID_FILE"
 echo "$RUN_DIR" > "$LATEST_FILE"
@@ -74,6 +89,8 @@ Manual acceptance environment is ready.
 
 - URL: http://$HOST:$PORT/
 - PID: $PID
+- DB Path: $DB_PATH
+- Auth Username: $AUTH_USERNAME
 - Log: $LOG_FILE
 - Evidence root: $RUN_DIR
 
