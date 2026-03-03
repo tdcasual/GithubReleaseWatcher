@@ -39,7 +39,7 @@ jobs:
 
       - name: Block legacy runtime tokens
         run: |
-          if rg -n '/api/v1|window\.GRW|github_release_watcher\.webapp' github_release_watcher deploy scripts README.md; then
+          if rg -n '/api/v1|window\.GRW|github_release_watcher\.(webapp|config|downloader|webdav|metrics|logging_setup|github|config_validation)' github_release_watcher deploy scripts docs/plans README.md; then
             echo "Legacy token found"
             exit 1
           fi
