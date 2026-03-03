@@ -12,6 +12,7 @@ from ..auth import V2AuthService
 class AppContext:
     db_path: Path
     auth_service: V2AuthService
+    session_cookie_secure: bool
 
 
 def get_ctx(request: Request) -> AppContext:

@@ -13,16 +13,26 @@ from .db import init_db
 def create_app(
     *,
     db_path: Path | None = None,
-    auth_username: str = "admin",
-    auth_password: str = "admin",
+    auth_username: str | None = None,
+    auth_password: str | None = None,
+    session_cookie_secure: bool = True,
 ) -> FastAPI:
+    username = str(auth_username or "").strip()
+    password = str(auth_password or "")
+    if not username or not password:
+        raise ValueError("auth credentials are required")
+
     resolved_db_path = Path(db_path) if db_path is not None else Path("./v2.sqlite3")
     init_db(resolved_db_path)
 
-    auth_service = V2AuthService(db_path=resolved_db_path, username=auth_username, password=auth_password)
+    auth_service = V2AuthService(db_path=resolved_db_path, username=username, password=password)
 
     app = FastAPI(title="GitHub Release Watcher V2")
-    app.state.ctx = AppContext(db_path=resolved_db_path, auth_service=auth_service)
+    app.state.ctx = AppContext(
+        db_path=resolved_db_path,
+        auth_service=auth_service,
+        session_cookie_secure=bool(session_cookie_secure),
+    )
 
     @app.get("/api/v2/health")
     def health() -> dict[str, object]:

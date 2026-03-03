@@ -13,7 +13,10 @@ class V2EventsApiTests(unittest.TestCase):
     def test_append_and_list_events(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             db_path = Path(td) / "v2.sqlite3"
-            client = TestClient(create_app(db_path=db_path, auth_username="tester", auth_password="pass"))
+            client = TestClient(
+                create_app(db_path=db_path, auth_username="tester", auth_password="pass"),
+                base_url="https://testserver",
+            )
 
             login = client.post("/api/v2/auth/login", json={"username": "tester", "password": "pass"})
             self.assertEqual(login.status_code, 200)

@@ -11,7 +11,10 @@ from github_release_watcher.v2.app import create_app
 def test_job_status_flow_transitions() -> None:
     with tempfile.TemporaryDirectory() as td:
         db_path = Path(td) / "v2.sqlite3"
-        client = TestClient(create_app(db_path=db_path, auth_username="tester", auth_password="pass"))
+        client = TestClient(
+            create_app(db_path=db_path, auth_username="tester", auth_password="pass"),
+            base_url="https://testserver",
+        )
         login = client.post("/api/v2/auth/login", json={"username": "tester", "password": "pass"})
         assert login.status_code == 200
 

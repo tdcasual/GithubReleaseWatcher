@@ -10,13 +10,15 @@ V2 is a breaking-clean release. Runtime supports only `/api/v2/*`.
 ## Run API Server
 
 ```bash
-python3 watcher.py --web --web-host 127.0.0.1 --web-port 8000
+python3 watcher.py --web --db-path ./v2.sqlite3 --auth-username admin --auth-password change-me
 ```
 
-Optional auth/database overrides:
+Auth credentials are required. You can pass them via CLI flags or environment variables:
 
 ```bash
-python3 watcher.py --web --db-path ./v2.sqlite3 --auth-username admin --auth-password change-me
+export GRW_AUTH_USERNAME=admin
+export GRW_AUTH_PASSWORD=change-me
+python3 watcher.py --web --db-path ./v2.sqlite3
 ```
 
 ## API Surface (V2)

@@ -4,7 +4,7 @@ from github_release_watcher.v2.app import create_app
 
 
 def test_v2_app_registers_router_modules() -> None:
-    app = create_app()
+    app = create_app(auth_username="tester", auth_password="pass")
     paths = {route.path for route in app.routes}
     assert "/api/v2/auth/login" in paths
     assert "/api/v2/jobs" in paths

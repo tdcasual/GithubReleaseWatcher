@@ -27,6 +27,7 @@ def post_login(body: LoginRequest, request: Request) -> JSONResponse:
         httponly=True,
         samesite="lax",
         path="/",
+        secure=bool(ctx.session_cookie_secure),
     )
     return response
 

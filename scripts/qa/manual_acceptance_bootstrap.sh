@@ -7,8 +7,8 @@ cd "$ROOT_DIR"
 HOST="127.0.0.1"
 PORT="18000"
 DB_PATH="v2.sqlite3"
-AUTH_USERNAME="${GRW_BOOTSTRAP_USERNAME:-admin}"
-AUTH_PASSWORD="${GRW_BOOTSTRAP_PASSWORD:-change-me}"
+AUTH_USERNAME="${GRW_BOOTSTRAP_USERNAME:-}"
+AUTH_PASSWORD="${GRW_BOOTSTRAP_PASSWORD:-}"
 
 usage() {
   cat <<USAGE
@@ -68,6 +68,7 @@ mkdir -p "$RUN_DIR"
 # Use nohup + closed stdin so process survives parent shell exit in automation environments.
 nohup python3 watcher.py \
   --web \
+  --insecure-cookie \
   --web-host "$HOST" \
   --web-port "$PORT" \
   --db-path "$DB_PATH" \
