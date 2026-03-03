@@ -1,27 +1,33 @@
 const API = window.GRWApiClient?.API;
-if (!API) {
+const isoToLocal = window.GRWFormatters?.isoToLocal;
+const createAppUiUtils = window.GRWAppUiUtils?.createAppUiUtils;
+const createAuthController = window.GRWAppAuth?.createAuthController;
+const createMobileBehaviorController = window.GRWMobileBehavior?.createMobileBehaviorController;
+
+if (!API || !isoToLocal || !createAppUiUtils || !createAuthController || !createMobileBehaviorController) {
   throw new Error("Shared API client not loaded");
 }
 
 const $ = (id) => document.getElementById(id);
 
-let toastTimer = null;
-let loginPromise = null;
 let repoKey = null;
 let releasesCount = null;
 let recentDeletedTags = [];
 let mustChangePassword = false;
 let latestRepoStats = {};
 
-function isoToLocal(iso) {
-  if (!iso) return "-";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString();
-  } catch {
-    return iso;
-  }
-}
+const uiUtils = createAppUiUtils({ getEl: $ });
+const toast = (message, kind) => uiUtils.toast(message, kind);
+const setButtonBusy = (btn, busy, busyText) => uiUtils.setButtonBusy(btn, busy, busyText);
+const syncDialogOpenState = () => uiUtils.syncDialogOpenState();
+const prefersReducedMotion = () => uiUtils.prefersReducedMotion();
+const revealHintIfNeeded = (el) => uiUtils.revealHintIfNeeded(el);
+const mobileBehaviorController = createMobileBehaviorController({
+  getEl: $,
+  prefersReducedMotion: () => prefersReducedMotion(),
+});
+const setupLogsScrollHints = () => mobileBehaviorController.setupLogsScrollHint();
+const setupMobileSectionNav = () => mobileBehaviorController.setupMobileSectionNav();
 
 function secondsToHuman(seconds) {
   const s = Number(seconds);
@@ -38,36 +44,6 @@ function buildBadge(text, cls) {
   const el = $("statusBadge");
   el.textContent = text;
   el.className = `badge ${cls ?? ""}`.trim();
-}
-
-function toast(message, kind) {
-  const el = $("toast");
-  if (!el) return;
-  if (!message) {
-    el.classList.add("hidden");
-    return;
-  }
-  el.textContent = message;
-  el.className = `toast ${kind ?? ""}`.trim();
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.add("hidden"), 2400);
-}
-
-function setButtonBusy(btn, busy, busyText) {
-  if (!btn) return;
-  if (busy) {
-    btn.dataset.prevDisabled = String(btn.disabled);
-    btn.dataset.prevText = btn.textContent || "";
-    btn.disabled = true;
-    btn.setAttribute("aria-busy", "true");
-    if (busyText) btn.textContent = busyText;
-  } else {
-    btn.disabled = btn.dataset.prevDisabled === "true";
-    btn.removeAttribute("aria-busy");
-    if (btn.dataset.prevText != null) btn.textContent = btn.dataset.prevText;
-    delete btn.dataset.prevDisabled;
-    delete btn.dataset.prevText;
-  }
 }
 
 function formatApiError(codeOrMessage) {
@@ -110,35 +86,6 @@ function updateReleaseStatsHint() {
   el.textContent = parts.join(" · ");
 }
 
-function syncDialogOpenState() {
-  const hasOpenDialog = !!document.querySelector("dialog[open]");
-  document.body.classList.toggle("dialog-open", hasOpenDialog);
-}
-
-function prefersReducedMotion() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
-function isMobileLikeViewport() {
-  return window.matchMedia("(max-width: 640px)").matches || window.matchMedia("(pointer: coarse)").matches;
-}
-
-function revealHintIfNeeded(el) {
-  if (!(el instanceof HTMLElement)) return;
-  if (!isMobileLikeViewport()) return;
-  if (!String(el.textContent || "").trim()) return;
-  const rect = el.getBoundingClientRect();
-  const vh = window.innerHeight || document.documentElement.clientHeight || 0;
-  if (!vh) return;
-  const safeTop = 88;
-  const safeBottom = 110;
-  const outOfView = rect.top < safeTop || rect.bottom > vh - safeBottom;
-  if (!outOfView) return;
-  try {
-    el.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
-  } catch {}
-}
-
 async function withAuth(fn) {
   try {
     return await fn();
@@ -164,119 +111,17 @@ function replaceScrollableText(el, nextText) {
   }
 }
 
-function setupLogsScrollHints() {
-  const blocks = Array.from(document.querySelectorAll("pre.logs"));
-  for (const logsEl of blocks) {
-    if (!(logsEl instanceof HTMLElement)) continue;
-    const parent = logsEl.parentElement;
-    const hintEl = parent?.querySelector(".logs-scroll-hint");
-    if (!(hintEl instanceof HTMLElement)) continue;
-
-    const dismiss = () => {
-      if (hintEl.classList.contains("hidden")) return;
-      hintEl.classList.add("hidden");
-    };
-
-    logsEl.addEventListener(
-      "scroll",
-      () => {
-        if (logsEl.scrollTop > 8) dismiss();
-      },
-      { passive: true }
-    );
-    logsEl.addEventListener(
-      "touchmove",
-      () => {
-        dismiss();
-      },
-      { passive: true }
-    );
-    logsEl.addEventListener(
-      "wheel",
-      () => {
-        dismiss();
-      },
-      { passive: true }
-    );
-  }
-}
-
-async function startLoginFlow(message) {
-  if (loginPromise) return loginPromise;
-  loginPromise = new Promise((resolve) => {
-    const dlg = $("loginDialog");
-    $("loginError").textContent = message || "";
-    $("loginUsername").value = "";
-    $("loginPassword").value = "";
-    dlg.showModal();
-    syncDialogOpenState();
-    setTimeout(() => $("loginUsername").focus(), 0);
-    dlg.addEventListener(
-      "cancel",
-      (e) => {
-        e.preventDefault();
-      },
-      { once: true }
-    );
-
-    const onDone = () => {
-      try {
-        dlg.close();
-      } catch {}
-      $("loginForm").onsubmit = null;
-      loginPromise = null;
-      resolve();
-    };
-
-    $("loginForm").onsubmit = async (e) => {
-      e.preventDefault();
-      const username = ($("loginUsername").value || "").trim();
-      const password = $("loginPassword").value || "";
-      if (!username || !password) {
-        $("loginError").textContent = "请输入账号与密码。";
-        return;
-      }
-      try {
-        const resp = await fetch("/api/v1/login", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ username, password }),
-        });
-        const res = await resp.json().catch(() => ({}));
-        if (!resp.ok || res.error) {
-          if (res.error === "rate_limited" || resp.status === 429) {
-            $("loginError").textContent = "登录过于频繁，请稍后再试。";
-          } else {
-            $("loginError").textContent = "账号或密码错误。";
-          }
-          return;
-        }
-        mustChangePassword = !!res?.user?.must_change_password;
-        renderSecurityBanner();
-        onDone();
-      } catch (err) {
-        $("loginError").textContent = String(err?.message || err);
-      }
-    };
-  });
-  return loginPromise;
-}
-
-async function requireLogin() {
-  try {
-    const me = await API.get("/me");
-    mustChangePassword = !!me?.user?.must_change_password;
+const authController = createAuthController({
+  getEl: $,
+  apiGetMe: () => API.get("/me"),
+  syncDialogOpenState: () => syncDialogOpenState(),
+  onAuthResolved: ({ mustChangePassword: nextMustChangePassword }) => {
+    mustChangePassword = !!nextMustChangePassword;
     renderSecurityBanner();
-    return;
-  } catch (e) {
-    if (e?.code !== "unauthorized") throw e;
-  }
-  await startLoginFlow();
-  const me = await API.get("/me");
-  mustChangePassword = !!me?.user?.must_change_password;
-  renderSecurityBanner();
-}
+  },
+});
+
+const requireLogin = () => authController.requireLogin();
 
 function parseRepoKey() {
   const url = new URL(window.location.href);
@@ -415,106 +260,6 @@ function initSectionToggles() {
       btn.textContent = collapsed ? "展开" : "折叠";
       btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
     });
-  }
-}
-
-function setupMobileSectionNav() {
-  const nav = document.querySelector(".mobile-nav");
-  if (!nav) return;
-  const links = Array.from(nav.querySelectorAll('.mobile-nav-item[href^="#"]'));
-  if (!links.length) return;
-
-  const items = links
-    .map((link) => {
-      const raw = String(link.getAttribute("href") || "");
-      const id = raw.startsWith("#") ? raw.slice(1) : "";
-      const section = id ? document.getElementById(id) : null;
-      return section ? { id, section, link } : null;
-    })
-    .filter(Boolean);
-  if (!items.length) return;
-  items.sort((a, b) => a.section.offsetTop - b.section.offsetTop);
-
-  const sectionScrollOffset = () => {
-    const cssOffsetRaw = getComputedStyle(document.documentElement).getPropertyValue("--section-scroll-offset");
-    const cssOffset = Number.parseFloat(cssOffsetRaw);
-    if (Number.isFinite(cssOffset) && cssOffset > 0) return Math.ceil(cssOffset);
-    const topbar = document.querySelector(".topbar");
-    return Math.ceil((topbar?.getBoundingClientRect().height || 0) + 12);
-  };
-
-  const setActive = (id) => {
-    for (const item of items) {
-      const active = item.id === id;
-      item.link.classList.toggle("active", active);
-      if (active) item.link.setAttribute("aria-current", "page");
-      else item.link.removeAttribute("aria-current");
-    }
-  };
-
-  const scrollToSection = (id) => {
-    const target = document.getElementById(id);
-    if (!target) return;
-    const targetY = window.scrollY + target.getBoundingClientRect().top - sectionScrollOffset();
-    window.scrollTo({ top: Math.max(0, targetY), behavior: prefersReducedMotion() ? "auto" : "smooth" });
-    if (history.replaceState) history.replaceState(null, "", `#${id}`);
-  };
-
-  for (const item of items) {
-    item.link.addEventListener("click", (e) => {
-      e.preventDefault();
-      setActive(item.id);
-      scrollToSection(item.id);
-    });
-  }
-
-  let ticking = false;
-  const updateByScroll = () => {
-    ticking = false;
-    const offset = sectionScrollOffset();
-    const probeY = offset + 8;
-    const hashId = (location.hash || "").replace(/^#/, "");
-    if (hashId) {
-      const hashItem = items.find((x) => x.id === hashId);
-      if (hashItem) {
-        const rect = hashItem.section.getBoundingClientRect();
-        const vh = window.innerHeight || document.documentElement.clientHeight || 0;
-        const hashVisibleTop = Math.max(offset + 64, vh * 0.55);
-        if (rect.top <= hashVisibleTop && rect.bottom > Math.min(offset - 32, 0)) {
-          setActive(hashItem.id);
-          return;
-        }
-      }
-    }
-    let current = items[0];
-    for (const item of items) {
-      if (item.section.getBoundingClientRect().top <= probeY) current = item;
-      else break;
-    }
-    setActive(current.id);
-  };
-  const requestUpdate = () => {
-    if (ticking) return;
-    ticking = true;
-    window.requestAnimationFrame(updateByScroll);
-  };
-
-  window.addEventListener("scroll", requestUpdate, { passive: true });
-  window.addEventListener("resize", requestUpdate);
-  window.addEventListener("hashchange", () => {
-    const id = (location.hash || "").replace(/^#/, "");
-    if (!id) return;
-    const item = items.find((x) => x.id === id);
-    if (item) setActive(item.id);
-  });
-
-  const currentHashId = (location.hash || "").replace(/^#/, "");
-  if (currentHashId) {
-    const current = items.find((x) => x.id === currentHashId);
-    if (current) setActive(current.id);
-    else requestUpdate();
-  } else {
-    requestUpdate();
   }
 }
 

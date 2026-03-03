@@ -5,6 +5,15 @@ from pathlib import Path
 
 
 FILES = [
+    "api-client.js",
+    "formatters.js",
+    "logs-view.js",
+    "repos-controller.js",
+    "settings-controller.js",
+    "storage-diagnostics.js",
+    "batch-selectors.js",
+    "batch-actions.js",
+    "mobile-behavior.js",
     "index.html",
     "app.js",
     "app-runtime.js",
